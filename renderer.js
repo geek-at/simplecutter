@@ -69,9 +69,12 @@ function combinevideos(videos)
 
 function loadVideo(file)
 {
+    var path = require('path').dirname(file);
+    
     currentvideo = file;
     console.log("loading "+file);
-    var videotag = '\
+    var videotag = '<h2>Loaded "'+require('path').basename(file)+'"</h2>\
+        <p>from path: '+path+'</p>\
         <video\
             id="video-active"\
             class="video-active"\
@@ -93,6 +96,9 @@ function loadVideo(file)
         </div>\
         <div class="checkbox">\
             <label><input id="halfsize" type="checkbox" value="1">Half the resolution of the video</label>\
+        </div>\
+        <div class="checkbox">\
+            <label><input id="gif" type="checkbox" value="1">Create as gif (big files!)</label>\
         </div>\
         <button onClick="cutIt()">Cut it!</button>\
         <div class="progress">\
@@ -127,28 +133,33 @@ function cutIt()
         var bin = 'ffmpeg\\bin\\ffmpeg.exe';
     }
     
-    var path = require('path').dirname(currentvideo)+"\\cut\\";
+    var path = require('path').dirname(currentvideo)+"\\cut";
     if (!fs.existsSync(path)){
         fs.mkdirSync(path);
     }
 
     var starttime = parseFloat($("#starttime").val());
     var duration = parseFloat($("#endtime").val());
-    var outfile = '"'+path+'\\'+ $("#newname").val() +'"';
-
-    console.log(outfile);
+    var outfile = path+'\\'+ $("#newname").val() ;
+        
 
     var command = bin+" -y -i \""+currentvideo+"\" -ss "+ starttime + " -t "+ duration;
+
+    if(document.getElementById('gif').checked)
+    {
+        outfile+='.gif';
+        command+=" -r 15 -vf scale=640:-1";
+    }
 
     if(document.getElementById('nosound').checked)
         command+=" -an";
 
-    if(document.getElementById('halfsize').checked)
+    if(document.getElementById('halfsize').checked && !document.getElementById('gif').checked)
         command+=" -vf scale=iw*.5:ih*.5";
 
     
 
-    command+=" "+outfile;
+    command+=" "+'"'+outfile+'"';
 
     //console.log(command);
 
@@ -157,6 +168,12 @@ function cutIt()
             function(data){
                 console.log('finito',data);
                 endLoading();
+                if(!document.getElementById('gif').checked)
+                    loadVideo(outfile);
+                else
+                    $("#video").html('<h2>Finished!</h2>\
+                        <p>Path: '+path+'</p>\
+                        <img src="'+outfile+'">');
             }
         );
 }

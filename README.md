@@ -17,4 +17,4 @@ npm start
 
 # build it
 npm run dist
-```# simplecutter
+```
