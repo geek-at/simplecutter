@@ -1,4 +1,72 @@
 var currentvideo = '';
+
+function combinevideos(videos)
+{
+    var fs = require('fs');
+    console.log("combining "+ videos.length +" videos");
+    startLoading()
+    var bin = 'resources\\ffmpeg\\bin\\ffmpeg.exe';
+    if (!fs.existsSync(bin)) {
+        var bin = 'ffmpeg\\bin\\ffmpeg.exe';
+    }
+    var ffmpeg = require('fluent-ffmpeg');
+    ffmpeg.setFfmpegPath(bin);
+    
+    var mergedname = calcName();
+
+    var command = '';
+    var outpath = require('path').dirname(videos[0].path)+"\\cut\\";
+    if (!fs.existsSync(outpath)){
+        fs.mkdirSync(outpath);
+    }
+
+    outpath+=mergedname;
+
+    for (let f of videos)
+    {
+        var path = f.path;
+        if(command=='')
+            command = ffmpeg(path);
+        else 
+            command.input(path);
+    }
+
+    command.on('error', function(err) {
+        console.log('An error occurred: ' + err.message);
+        endLoading()
+    })
+    .on('end', function() {
+        console.log('Merging finished !');
+        endLoading();
+        $("#video").html('<h2>Finished!</h2>\
+        <p>New video name: '+mergedname+'</p>\
+        <p>Path: '+outpath+'</p>\
+        <video\
+            id="video-active"\
+            class="video-active"\
+            width="640"\
+            height="390"\
+            controls="controls">\
+            <source src="'+outpath+'" type="video/mp4">\
+        </video>');
+    })
+    .mergeToFile(outpath, '.');
+
+    /*
+    var command = ffmpeg('C:\\Users\\Chris\\Videos\\Tom Clancy\'s Rainbow Six  Siege\\val_trick_1.mp4')
+    .input('C:\\Users\\Chris\\Videos\\Tom Clancy\'s Rainbow Six  Siege\\val_trick_2.mp4')
+    .on('error', function(err) {
+        console.log('An error occurred: ' + err.message);
+        endLoading()
+    })
+    .on('end', function() {
+        console.log('Merging finished !');
+        endLoading()
+    })
+    .mergeToFile('C:\\Users\\Chris\\Videos\\Tom Clancy\'s Rainbow Six  Siege\\merged.mp4', '.');
+    */
+}
+
 function loadVideo(file)
 {
     currentvideo = file;
@@ -59,7 +127,10 @@ function cutIt()
         var bin = 'ffmpeg\\bin\\ffmpeg.exe';
     }
     
-    var path = require('path').dirname(currentvideo);
+    var path = require('path').dirname(currentvideo)+"\\cut\\";
+    if (!fs.existsSync(path)){
+        fs.mkdirSync(path);
+    }
 
     var starttime = parseFloat($("#starttime").val());
     var duration = parseFloat($("#endtime").val());

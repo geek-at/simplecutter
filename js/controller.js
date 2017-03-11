@@ -10,11 +10,14 @@ const holder = document.getElementById('main');
   }
   holder.ondrop = (e) => {
     e.preventDefault()
-    for (let f of e.dataTransfer.files)
-    {
-      console.log('File(s) you dragged here: ', f.path)
-      loadVideo(f.path)
-    }
+    if(e.dataTransfer.files.length==1)
+      for (let f of e.dataTransfer.files)
+      {
+        console.log('File(s) you dragged here: ', f.path)
+        loadVideo(f.path)
+      }
+    else 
+      combinevideos(e.dataTransfer.files);
     return false;
   }
 
