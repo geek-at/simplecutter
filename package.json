@@ -1,0 +1,32 @@
+{
+  "name": "dta-cutter",
+  "version": "0.1.0",
+  "description": "can cut videos and shit",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "build --dir",
+    "dist": "build"
+  },
+  "keywords": [
+    "ffmpeg",
+    "cutting"
+  ],
+  "author": "Haschek Solutions",
+  "license": "CC0-1.0",
+  "devDependencies": {
+    "electron": "^1.4.1"
+  },
+  "dependencies": {
+    "fluent-ffmpeg": "^2.1.0",
+    "node-cmd": "^2.0.0",
+    "sentencer": "^0.1.5"
+  },
+  "build": {
+    "appId": "hascheksolutions.ffmpeg",
+    "extraResources": "ffmpeg",
+    "mac": {
+      "category": "hs.ffmpeg.parser"
+    }
+  }
+}
