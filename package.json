@@ -1,6 +1,6 @@
 {
   "name": "dta-cutter",
-  "version": "0.3.0",
+  "version": "0.3.5",
   "description": "can cut videos and shit",
   "main": "main.js",
   "scripts": {
@@ -20,7 +20,8 @@
   "dependencies": {
     "fluent-ffmpeg": "^2.1.0",
     "node-cmd": "^2.0.0",
-    "sentencer": "^0.1.5"
+    "sentencer": "^0.1.5",
+    "request":"^2.81.0"
   },
   "build": {
     "appId": "hascheksolutions.ffmpeg",

@@ -28,7 +28,7 @@ function onTrackedVideoFrame(currentTime, duration){
 
 function getSpinner(withtext)
 {
-    return (withtext===true?'<h3 class="text-center">Processing.. </h3>':'')+'<div class="sk-cube-grid">\
+    return (withtext===true?'<h3 id="loadingtext" class="text-center">Processing.. </h3>':'')+'<div class="sk-cube-grid">\
                 <div class="sk-cube sk-cube1"></div>\
                 <div class="sk-cube sk-cube2"></div>\
                 <div class="sk-cube sk-cube3"></div>\

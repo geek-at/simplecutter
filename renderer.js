@@ -37,6 +37,9 @@ function combinevideos(videos)
     })
     .on('end', function() {
         console.log('Merging finished !');
+        const {shell} = require('electron')
+
+        shell.showItemInFolder(outpath);
         endLoading();
         $("#video").html('<h2>Finished!</h2>\
         <p>New video name: '+mergedname+'</p>\
@@ -99,6 +102,9 @@ function loadVideo(file)
         </div>\
         <div class="checkbox">\
             <label><input id="gif" type="checkbox" value="1">Create as gif (big files!)</label>\
+        </div>\
+        <div class="checkbox">\
+            <label><input id="pictshare" type="checkbox" checked value="1">Upload to PictShare after cut</label>\
         </div>\
         <button onClick="cutIt()">Cut it!</button>\
         <div class="progress">\
@@ -167,13 +173,20 @@ function cutIt()
             command,
             function(data){
                 console.log('finito',data);
-                endLoading();
+                if(document.getElementById('pictshare').checked)
+                    uploadFileToPictshare(outfile);
+                else 
+                    endLoading();
                 if(!document.getElementById('gif').checked)
                     loadVideo(outfile);
                 else
                     $("#video").html('<h2>Finished!</h2>\
                         <p>Path: '+path+'</p>\
                         <img src="'+outfile+'">');
+
+                const {shell} = require('electron')
+
+                shell.showItemInFolder(outfile);
             }
         );
 }
@@ -200,4 +213,31 @@ function setEndtime()
     var starttime = parseFloat($("#starttime").val());
     var current = parseFloat($("#current").text());
     $("#endtime").val(current-starttime);
+}
+
+function uploadFileToPictshare(file)
+{
+    $("#loadingtext").html('Uploading to PictShare');
+    console.log("uploading to pictshare");
+  var req = require('request').post('https://pictshare.net/backend.php', function (err, resp, body) {
+  if (err) {
+    console.log('Error!');
+  } else {
+    console.log('URL: ' + body);
+    var o = JSON.parse(body);
+    if(o.hash===undefined || !o.hash){
+        endLoading()
+        return false;
+    }
+    var url = 'https://pictshare.net/'+o.hash;
+    const {shell} = require('electron')
+    shell.openExternal(url);
+    endLoading()
+    }
+  });
+  var form = req.form();
+  form.append('postimage', require('fs').createReadStream(file), {
+    filename: 'postimage',
+    contentType: 'text/plain'
+  });
 }
