@@ -106,6 +106,9 @@ function loadVideo(file)
         <div class="checkbox">\
             <label><input id="pictshare" type="checkbox" checked value="1">Upload to PictShare after cut</label>\
         </div>\
+        <div class="checkbox">\
+            <label><input id="fps" type="checkbox" value="1">Set to 30 FPS</label>\
+        </div>\
         <button onClick="cutIt()">Cut it!</button>\
         <div class="progress">\
             <div class="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width:0%">\
@@ -159,6 +162,9 @@ function cutIt()
 
     if(document.getElementById('nosound').checked)
         command+=" -an";
+
+    if(document.getElementById('fps').checked && !document.getElementById('gif').checked)
+        command+=" -r 30";
 
     if(document.getElementById('halfsize').checked && !document.getElementById('gif').checked)
         command+=" -vf scale=iw*.5:ih*.5";
