@@ -110,11 +110,6 @@ function loadVideo(file)
             <label><input id="fps" type="checkbox" value="1">Set to 30 FPS</label>\
         </div>\
         <button onClick="cutIt()">Cut it!</button>\
-        <div class="progress">\
-            <div class="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width:0%">\
-                0%\
-            </div>\
-        </div>\
         ';
     $("#video").html(videotag);
 
@@ -183,13 +178,15 @@ function cutIt()
                     uploadFileToPictshare(outfile);
                 else 
                     endLoading();
+
+                /*
                 if(!document.getElementById('gif').checked)
                     loadVideo(outfile);
                 else
                     $("#video").html('<h2>Finished!</h2>\
                         <p>Path: '+path+'</p>\
                         <img src="'+outfile+'">');
-
+                */
                 const {shell} = require('electron')
 
                 shell.showItemInFolder(outfile);
