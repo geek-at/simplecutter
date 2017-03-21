@@ -1,6 +1,6 @@
 {
   "name": "dta-cutter",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "can cut videos and shit",
   "main": "main.js",
   "scripts": {
