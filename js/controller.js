@@ -14,6 +14,23 @@ const holder = document.getElementById('main');
       for (let f of e.dataTransfer.files)
       {
         console.log('File(s) you dragged here: ', f.path)
+
+        /*
+        var ffmpeg = require('fluent-ffmpeg');
+        var command = ffmpeg(f.path);
+        var outfile = 'C:\\Users\\chris\\Videos\\Tom Clancy\'s Rainbow Six  Siege\\cut\\cut\\cut\\out.test.mp4';
+        command.setFfmpegPath('ffmpeg/bin/ffmpeg.exe');
+        command.setFfprobePath('ffmpeg/bin/ffprobe.exe');
+        command.output("C:\\Users\\chris\\Videos\\Tom Clancy's Rainbow Six  Siege\\cut\\cut\\cut\\flowercrush.mp4").seek(4.04652).duration(2.521745)
+        command.on('end', function() {
+          console.log('Finished processing');
+        }).on('progress', function(progress) {
+          console.log('Processing: ' + progress.percent + '% done');
+        })
+        .run();
+        */
+        
+
         loadVideo(f.path)
       }
     else 
@@ -38,5 +55,8 @@ function getSpinner(withtext)
                 <div class="sk-cube sk-cube7"></div>\
                 <div class="sk-cube sk-cube8"></div>\
                 <div class="sk-cube sk-cube9"></div>\
+            </div><br/>\
+            <div id="myProgress">\
+              <div id="progressbar"></div>\
             </div>';
 }

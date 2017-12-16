@@ -95,7 +95,7 @@ function loadVideo(file)
         <button onClick="setStarttime()">Set starttime</button> <input id="starttime" type="text" placeholder="starttime"/><br/>\
         <button onClick="setEndtime()">Set endtime</button> <input id="endtime" type="text" placeholder="endtime"/>\
         <div class="checkbox">\
-            <label><input id="nosound" checked type="checkbox" value="1">Remove sound</label>\
+            <label><input id="nosound" type="checkbox" value="1">Remove sound</label>\
         </div>\
         <div class="checkbox">\
             <label><input id="halfsize" type="checkbox" value="1">Half the resolution of the video</label>\
@@ -104,10 +104,29 @@ function loadVideo(file)
             <label><input id="gif" type="checkbox" value="1">Create as gif (big files!)</label>\
         </div>\
         <div class="checkbox">\
-            <label><input id="pictshare" type="checkbox" checked value="1">Upload to PictShare after cut</label>\
+            <label><input id="pictshare" type="checkbox" value="1">Upload to PictShare after cut</label>\
         </div>\
         <div class="checkbox">\
             <label><input id="fps" type="checkbox" value="1">Set to 30 FPS</label>\
+        </div>\
+        <div class="checkbox">\
+            <label><input id="nvenc" type="checkbox" value="1">(beta) Use GPU encoding</label>\
+        </div>\
+        \
+        <div class="radio">\
+            <label><input type="radio" name="speedchange" value="4">Quater speed</label>\
+        </div>\
+        <div class="radio">\
+            <label><input type="radio" name="speedchange" value="2">Half speed</label>\
+        </div>\
+        <div class="radio">\
+            <label><input type="radio" name="speedchange" checked value="1">Normal speed</label>\
+        </div>\
+        <div class="radio">\
+            <label><input type="radio" name="speedchange" value="0.5">2x faster</label>\
+        </div>\
+        <div class="radio">\
+            <label><input type="radio" name="speedchange" value="2">4x faster</label>\
         </div>\
         <button onClick="cutIt()">Cut it!</button>\
         ';
@@ -145,31 +164,57 @@ function cutIt()
     var starttime = parseFloat($("#starttime").val());
     var duration = parseFloat($("#endtime").val());
     var outfile = path+'\\'+ $("#newname").val() ;
-        
 
-    var command = bin+" -y -i \""+currentvideo+"\" -ss "+ starttime + " -t "+ duration;
+    var ffmpeg = require('fluent-ffmpeg');
+    var command = ffmpeg(currentvideo);
+    command.setFfmpegPath('ffmpeg/bin/ffmpeg.exe');
+    command.setFfprobePath('ffmpeg/bin/ffprobe.exe');
 
     if(document.getElementById('gif').checked)
     {
         outfile+='.gif';
-        command+=" -r 15 -vf scale=640:-1";
+        command.fps(15).size('640x?');
     }
 
     if(document.getElementById('nosound').checked)
-        command+=" -an";
+        command.noAudio();
 
     if(document.getElementById('fps').checked && !document.getElementById('gif').checked)
-        command+=" -r 30";
-
+        command.fps(30);
+        
     if(document.getElementById('halfsize').checked && !document.getElementById('gif').checked)
-        command+=" -vf scale=iw*.5:ih*.5";
+        command.size('50%');
 
+    if(document.getElementById('nvenc').checked && !document.getElementById('gif').checked)
+        command.videoCodec('h264_nvenc')
+    
+    var playbackspeed = parseFloat($('input[name="speedchange"]:checked').val());
+
+
+    //var command = bin+" -y -i \""+currentvideo+"\" -ss "+ starttime + " -t "+ (duration*playbackspeed) + commandattachments;
     
 
-    command+=" "+'"'+outfile+'"';
+    //command+=" "+'"'+outfile+'"';
+
+    command.output(outfile).seek(starttime).duration(duration*playbackspeed)
+        .videoFilters('setpts='+playbackspeed+'*PTS')
+        .on('end', function() {
+        console.log('Finished processing');
+        const {shell} = require('electron')
+        shell.showItemInFolder(outfile);
+        if(document.getElementById('pictshare').checked)
+            uploadFileToPictshare(outfile);
+        else 
+            endLoading();
+      }).on('progress', function(progress) {
+        setProgress(progress.percent);
+        console.log('Processing: ' + progress.percent + '% done');
+      })
+      .run();
 
     //console.log(command);
 
+    /*
     cmd.get(
             command,
             function(data){
@@ -178,20 +223,19 @@ function cutIt()
                     uploadFileToPictshare(outfile);
                 else 
                     endLoading();
-
-                /*
-                if(!document.getElementById('gif').checked)
-                    loadVideo(outfile);
-                else
-                    $("#video").html('<h2>Finished!</h2>\
-                        <p>Path: '+path+'</p>\
-                        <img src="'+outfile+'">');
-                */
                 const {shell} = require('electron')
 
                 shell.showItemInFolder(outfile);
             }
         );
+    */
+}
+
+function setProgress(value) {
+    var elem = document.getElementById("progressbar"); 
+    var width = 1;
+    elem.style.width = Math.round(value) + '%'; 
+    elem.innerHTML = Math.round(value) + '%';
 }
 
 function startLoading()
