@@ -172,14 +172,20 @@ function cutIt()
     command.setFfmpegPath(bin);
     command.setFfprobePath(bin2);
 
+    var noaudio = false;
+
     if(document.getElementById('gif').checked)
     {
         outfile+='.gif';
         command.fps(15).size('640x?');
+        noaudio = true;
     }
 
     if(document.getElementById('nosound').checked)
+    {
         command.noAudio();
+        noaudio = true;
+    }
 
     if(document.getElementById('fps').checked && !document.getElementById('gif').checked)
         command.fps(30);
@@ -191,8 +197,25 @@ function cutIt()
         command.videoCodec('h264_nvenc')
     
     var playbackspeed = parseFloat($('input[name="speedchange"]:checked').val());
-    if(playbackspeed!=1)
-        command.noAudio();
+    //if(playbackspeed!=1)
+    //    command.noAudio();
+
+    if(noaudio === false)
+        switch(playbackspeed)
+        {
+            case 2: //half
+                command.audioFilters('atempo=0.5')
+            break;
+            case 4: //quater
+                command.audioFilters('atempo=0.5,atempo=0.5')
+            break;
+            case 0.5: //double
+                command.audioFilters('atempo=2')
+            break;
+            case 0.25: //quatripple
+                command.audioFilters('atempo=2,atempo=2')
+            break;
+        }
 
 
     //var command = bin+" -y -i \""+currentvideo+"\" -ss "+ starttime + " -t "+ (duration*playbackspeed) + commandattachments;
