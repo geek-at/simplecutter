@@ -11,6 +11,10 @@ const url = require('url')
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow
 
+electron.app.on('browser-window-created',function(e,window) {
+  window.setMenu(null);
+});
+
 function createWindow () {
   // Create the browser window.
   mainWindow = new BrowserWindow({width: 1024, height: 600})

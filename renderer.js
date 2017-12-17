@@ -126,7 +126,7 @@ function loadVideo(file)
             <label><input type="radio" name="speedchange" value="0.5">2x faster</label>\
         </div>\
         <div class="radio">\
-            <label><input type="radio" name="speedchange" value="2">4x faster</label>\
+            <label><input type="radio" name="speedchange" value="0.25">4x faster</label>\
         </div>\
         <button onClick="cutIt()">Cut it!</button>\
         ';
@@ -152,8 +152,10 @@ function cutIt()
     startLoading()
     var cmd=require('node-cmd');
     var bin = 'resources\\ffmpeg\\bin\\ffmpeg.exe';
+    var bin2 = 'resources\\ffmpeg\\bin\\ffprobe.exe';
     if (!fs.existsSync(bin)) {
         var bin = 'ffmpeg\\bin\\ffmpeg.exe';
+        var bin2 = 'ffmpeg\\bin\\ffprobe.exe';
     }
     
     var path = require('path').dirname(currentvideo)+"\\cut";
@@ -167,8 +169,8 @@ function cutIt()
 
     var ffmpeg = require('fluent-ffmpeg');
     var command = ffmpeg(currentvideo);
-    command.setFfmpegPath('ffmpeg/bin/ffmpeg.exe');
-    command.setFfprobePath('ffmpeg/bin/ffprobe.exe');
+    command.setFfmpegPath(bin);
+    command.setFfprobePath(bin2);
 
     if(document.getElementById('gif').checked)
     {
@@ -189,6 +191,8 @@ function cutIt()
         command.videoCodec('h264_nvenc')
     
     var playbackspeed = parseFloat($('input[name="speedchange"]:checked').val());
+    if(playbackspeed!=1)
+        command.noAudio();
 
 
     //var command = bin+" -y -i \""+currentvideo+"\" -ss "+ starttime + " -t "+ (duration*playbackspeed) + commandattachments;
@@ -196,7 +200,7 @@ function cutIt()
 
     //command+=" "+'"'+outfile+'"';
 
-    command.output(outfile).seek(starttime).duration(duration*playbackspeed)
+    command.output(outfile).seek(starttime*playbackspeed).duration(duration*playbackspeed)
         .videoFilters('setpts='+playbackspeed+'*PTS')
         .on('end', function() {
         console.log('Finished processing');
