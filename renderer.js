@@ -1,4 +1,5 @@
 var currentvideo = '';
+var bitrate = '';
 
 function combinevideos(videos)
 {
@@ -73,6 +74,12 @@ function combinevideos(videos)
 function loadVideo(file)
 {
     var path = require('path').dirname(file);
+
+    var ffmpeg = require('fluent-ffmpeg');
+    ffmpeg.ffprobe(file,function(err, metadata) {
+      bitrate = metadata.streams[0].bit_rate;
+      console.log("Found bitrate of video! It's: "+bitrate);
+    });
     
     currentvideo = file;
     console.log("loading "+file);
@@ -194,7 +201,7 @@ function cutIt()
         command.size('50%');
 
     if(document.getElementById('nvenc').checked && !document.getElementById('gif').checked)
-        command.videoCodec('h264_nvenc')
+        command.videoCodec('h264_nvenc').videoBitrate((isNaN(bitrate) && bitrate > 0)?bitrate:'4000k')
     
     var playbackspeed = parseFloat($('input[name="speedchange"]:checked').val());
     //if(playbackspeed!=1)

@@ -14,6 +14,12 @@ const holder = document.getElementById('main');
       for (let f of e.dataTransfer.files)
       {
         console.log('File(s) you dragged here: ', f.path)
+/*
+        // make sure you set the correct path to your video file
+        var ffmpeg = require('fluent-ffmpeg');
+        ffmpeg.ffprobe(f.path,function(err, metadata) {
+          console.log(metadata.streams[0].bit_rate);
+        });
 
         /*
         var ffmpeg = require('fluent-ffmpeg');
