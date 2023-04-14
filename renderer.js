@@ -117,7 +117,7 @@ function loadVideo(file)
             <label><input id="fps" type="checkbox" value="1">Set to 30 FPS</label>\
         </div>\
         <div class="checkbox">\
-            <label><input id="nvenc" type="checkbox" value="1">(beta) Use GPU encoding</label>\
+            <label><input id="nvenc" type="checkbox" checked value="1">Use GPU encoding</label>\
         </div>\
         \
         <div class="radio">\
