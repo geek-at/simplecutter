@@ -17,7 +17,7 @@ electron.app.on('browser-window-created',function(e,window) {
 
 function createWindow () {
   // Create the browser window.
-  mainWindow = new BrowserWindow({width: 1024, height: 600})
+  mainWindow = new BrowserWindow({width: 1024, height: 600,title: "Simple cutter v"+app.getVersion()})
 
   // and load the index.html of the app.
   mainWindow.loadURL(url.format({

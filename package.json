@@ -19,6 +19,7 @@
     "electron-builder": "^23.6.0"
   },
   "dependencies": {
+    "electron-updater": "^5.3.0",
     "fluent-ffmpeg": "^2.1.2",
     "node-cmd": "^2.0.0",
     "request": "^2.81.0",
