@@ -1,4 +1,5 @@
 const electron = require('electron')
+const autoUpdater = require("electron-updater");
 // Module to control application life.
 const app = electron.app
 // Module to create native browser window.
@@ -13,6 +14,10 @@ let mainWindow
 
 electron.app.on('browser-window-created',function(e,window) {
   window.setMenu(null);
+});
+
+app.on("ready", () => {
+	autoUpdater.checkForUpdatesAndNotify();
 });
 
 function createWindow () {
