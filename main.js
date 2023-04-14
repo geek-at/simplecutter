@@ -22,7 +22,15 @@ app.on("ready", () => {
 
 function createWindow () {
   // Create the browser window.
-  mainWindow = new BrowserWindow({width: 1024, height: 600,title: "Simple cutter v"+app.getVersion()})
+  mainWindow = new BrowserWindow({
+    width: 1024,
+    height: 600,
+    title: "Simple cutter v"+app.getVersion(),
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+  }
+  })
 
   // and load the index.html of the app.
   mainWindow.loadURL(url.format({
@@ -32,7 +40,7 @@ function createWindow () {
   }))
 
   // Open the DevTools.
-  //mainWindow.webContents.openDevTools()
+  mainWindow.webContents.openDevTools()
 
   // Emitted when the window is closed.
   mainWindow.on('closed', function () {
