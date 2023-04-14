@@ -201,7 +201,7 @@ function cutIt()
         command.size('50%');
 
     if(document.getElementById('nvenc').checked && !document.getElementById('gif').checked)
-        command.videoCodec('h264_nvenc').videoBitrate('6986k')
+        command.videoCodec('h264_nvenc').videoBitrate('10000k')
     
     var playbackspeed = parseFloat($('input[name="speedchange"]:checked').val());
     //if(playbackspeed!=1)
