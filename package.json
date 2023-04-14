@@ -29,14 +29,6 @@
     "extraResources": "ffmpeg",
     "mac": {
       "category": "hs.ffmpeg.parser"
-    },
-    "win": {
-      "target": [
-        "portable"
-      ]
-    },
-    "portable": {
-      "artifactName": "simplecutter_portable.exe"
     }
   }
 }
