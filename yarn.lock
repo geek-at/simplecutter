@@ -1255,15 +1255,10 @@ lodash.isequal@^4.5.0:
   resolved "https://registry.npmjs.org/lodash.isequal/-/lodash.isequal-4.5.0.tgz"
   integrity sha512-pDo3lu8Jhfjqls6GkMgpahsF9kCyayhgykjyLMNFTKWrpVdAQtYyB4muAMWozBB4ig/dtWAmsMxLEI8wuz+DYQ==
 
-lodash@^4.17.15:
+lodash@^4.17.11, lodash@^4.17.15:
   version "4.17.21"
   resolved "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz"
   integrity sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg==
-
-lodash@~2.4.1:
-  version "2.4.2"
-  resolved "https://registry.npmjs.org/lodash/-/lodash-2.4.2.tgz"
-  integrity sha512-Kak1hi6/hYHGVPmdyiZijoQyz5x2iGVzs6w9GYB/HiXEtylY7tIoYEROMjvM1d9nXJqPOrG2MNPMn01bJ+S0Rw==
 
 lowercase-keys@^2.0.0:
   version "2.0.0"
@@ -1564,9 +1559,9 @@ roarr@^2.15.3:
     semver-compare "^1.0.0"
     sprintf-js "^1.1.2"
 
-rxjs@*:
+rxjs@^7.5.2:
   version "7.8.0"
-  resolved "https://registry.npmjs.org/rxjs/-/rxjs-7.8.0.tgz"
+  resolved "https://registry.yarnpkg.com/rxjs/-/rxjs-7.8.0.tgz#90a938862a82888ff4c7359811a595e14e1e09a4"
   integrity sha512-F2+gxDshqmIub1KdvZkaEfGDwLNpPvk9Fs6LD/MyQxNgMds/WH9OdDDXOmxUZpME+iSK3rQCctkL0DYyytUqMg==
   dependencies:
     tslib "^2.1.0"
@@ -1615,13 +1610,13 @@ semver@~7.0.0:
   resolved "https://registry.npmjs.org/semver/-/semver-7.0.0.tgz"
   integrity sha512-+GB6zVA9LWh6zovYQLALHwv5rb2PHGlJi3lfiqIHxR0uuwCgefcOJc59v9fv1w8GbStwxuuqqAjI9NMAOOgq1A==
 
-sentencer@^0.1.5:
-  version "0.1.5"
-  resolved "https://registry.npmjs.org/sentencer/-/sentencer-0.1.5.tgz"
-  integrity sha512-cTVaycByVmJTxclJ2SZ6jFKo6No7VQtmnzJOhaRfI8mSg49juaC1K9I0h9+8dJmxirfdVGLbHcxkOPU7xl7NYQ==
+sentencer@^0.2.1:
+  version "0.2.1"
+  resolved "https://registry.yarnpkg.com/sentencer/-/sentencer-0.2.1.tgz#88a1f4767c14bb8cd148b07822e13b8b55897956"
+  integrity sha512-hDLHIc7DTdZASPJhL2IZChmUq9tTUsOaAlK2kNPYI9KSdrPeqNZfjJfTCEoqcR/IlLlIfngi7Wkx/KLPqqNtyQ==
   dependencies:
     articles "~0.2.1"
-    lodash "~2.4.1"
+    lodash "^4.17.11"
     natural "~0.1.28"
     randy "~1.5.1"
 

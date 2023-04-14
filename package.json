@@ -23,7 +23,7 @@
     "fluent-ffmpeg": "^2.1.2",
     "node-cmd": "^2.0.0",
     "request": "^2.81.0",
-    "sentencer": "^0.1.5"
+    "sentencer": "^0.2.1"
   },
   "build": {
     "appId": "hascheksolutions.ffmpeg",
