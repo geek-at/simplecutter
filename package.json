@@ -1,12 +1,12 @@
 {
   "name": "dta-cutter",
   "version": "0.3.10",
-  "description": "can cut videos and shit",
+  "description": "can cut and combine videos",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "pack": "build --dir",
-    "dist": "build"
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
   },
   "keywords": [
     "ffmpeg",
@@ -15,7 +15,8 @@
   "author": "Haschek Solutions",
   "license": "CC0-1.0",
   "devDependencies": {
-    "electron": "^1.4.1"
+    "electron": "^1.4.1",
+    "electron-builder": "^23.6.0"
   },
   "dependencies": {
     "fluent-ffmpeg": "^2.1.2",
@@ -28,6 +29,14 @@
     "extraResources": "ffmpeg",
     "mac": {
       "category": "hs.ffmpeg.parser"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ]
+    },
+    "portable": {
+      "artifactName": "simplecutter_portable.exe"
     }
   }
 }
