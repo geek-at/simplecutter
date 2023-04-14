@@ -1,6 +1,6 @@
 {
   "name": "dta-cutter",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "can cut and combine videos",
   "main": "main.js",
   "scripts": {
