@@ -13,9 +13,13 @@ jobs:
     steps:
       - name: Check out Git repository
         uses: actions/checkout@v1
+        with:
+          lfs: 'true'
+          submodules: 'recursive'
+          ssh-key: ${{ secrets.git_ssh_key }}
       - name: Checkout LFS objects
-        run: git lfs fetch --all
-        
+        run: git lfs pull
+
 
       - name: Install Node.js, NPM and Yarn
         uses: actions/setup-node@v1
