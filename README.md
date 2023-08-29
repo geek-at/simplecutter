@@ -21,6 +21,7 @@ npm run dist
 
 ### Version upgrade
 
+0. Replace current version strings with new one
 1. Commit with the new version number `git commit -m "v1.0.0"`
 2. Tag the commit with the new version number `git tag v1.0.0`
 3. Push the commit and the tag `git push && git push --tags`

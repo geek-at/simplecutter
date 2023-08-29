@@ -100,7 +100,8 @@ function loadVideo(file)
         <div id="current">0:00</div>\
         <div id="duration">0:00</div>\
         <button onClick="setStarttime()">Set starttime</button> <input id="starttime" type="text" placeholder="starttime"/><br/>\
-        <button onClick="setEndtime()">Set endtime</button> <input id="endtime" type="text" placeholder="endtime"/>\
+        <button onClick="setEndtime()">Set endtime</button> <input id="endtime" type="text" placeholder="endtime"/>\<br/>\
+        <button onClick="saveScreenshot()">Save screenshot</button>\
         <div class="checkbox">\
             <label><input id="nosound" type="checkbox" value="1">Remove sound</label>\
         </div>\
@@ -294,6 +295,45 @@ function setEndtime()
     var starttime = parseFloat($("#starttime").val());
     var current = parseFloat($("#current").text());
     $("#endtime").val(current-starttime);
+}
+
+function saveScreenshot()
+{
+    var fs = require('fs');
+    console.log("starting the cutting");
+    startLoading()
+    var cmd=require('node-cmd');
+    var bin = 'resources\\ffmpeg\\bin\\ffmpeg.exe';
+    var bin2 = 'resources\\ffmpeg\\bin\\ffprobe.exe';
+    if (!fs.existsSync(bin)) {
+        var bin = 'ffmpeg\\bin\\ffmpeg.exe';
+        var bin2 = 'ffmpeg\\bin\\ffprobe.exe';
+    }
+    
+    var path = require('path').dirname(currentvideo)+"\\cut";
+    if (!fs.existsSync(path)){
+        fs.mkdirSync(path);
+    }
+
+    var frametime = parseFloat($("#current").text());
+    var outfile = path+'\\'+ $("#newname").val().split('.').slice(0, -1).join('.')+'-'+$("#current").text()+'.jpg' ;
+
+    var ffmpeg = require('fluent-ffmpeg');
+    var command = ffmpeg(currentvideo);
+    command.setFfmpegPath(bin);
+    command.setFfprobePath(bin2);
+
+    command.output(outfile).seek(frametime).frames(1)
+        .on('end', function() {
+        console.log('Finished processing');
+        const {shell} = require('electron')
+        shell.showItemInFolder(outfile);
+        endLoading();
+        }).on('progress', function(progress) {
+        setProgress(progress.percent);
+        console.log('Processing: ' + progress.percent + '% done');
+        })
+      .run();
 }
 
 function uploadFileToPictshare(file)
