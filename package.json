@@ -15,7 +15,7 @@
   "author": "Haschek Solutions",
   "license": "CC0-1.0",
   "devDependencies": {
-    "electron": "^24.1.1",
+    "electron": "^24.7.1",
     "electron-builder": "^23.6.0"
   },
   "dependencies": {
