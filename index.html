@@ -1,54 +1,797 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SimpleCutter</title>
+  <link rel="icon" type="image/png" href="build/icon_32.png">
+  
+  <style>
+    /* ======== CSS Reset & Variables ======== */
+    :root {
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --bg-dark: #0f172a;
+      --bg-card: #1e293b;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --border: #334155;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+    }
 
-    <link href="css/bootstrap.css" rel="stylesheet">
-    <link href="css/animate.css" rel="stylesheet">
-    <link href="css/radius.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css?family=Noto+Sans" rel="stylesheet">
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-    <script src="js/jquery.min.js"></script>
-  </head>
-  <body id="main">
-    
-    <!-- Modal -->
-    <div class="modal fade" id="myModal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
-      <div class="modal-dialog" role="document">
-        <div class="modal-content">
-          <div class="modal-body">
-            <div id="loading"></div>
-          </div>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow: hidden;
+      cursor: default;
+      user-select: none;
+    }
+
+    /* ======== Custom Titlebar (frameless window) ======== */
+    .titlebar {
+      -webkit-app-region: drag;
+      height: 36px;
+      background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 0 0 14px;
+      flex-shrink: 0;
+    }
+
+    .titlebar-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      pointer-events: none;
+    }
+
+    .titlebar-title svg { flex-shrink: 0; }
+
+    .titlebar-controls {
+      -webkit-app-region: no-drag;
+      display: flex;
+      height: 100%;
+    }
+
+    .titlebar-btn {
+      width: 46px;
+      height: 100%;
+      border: none;
+      background: transparent;
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+    }
+
+    .titlebar-btn:hover { background: rgba(255,255,255,0.15); }
+    .titlebar-btn.close:hover { background: #e81123; }
+
+    .titlebar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      -webkit-app-region: no-drag;
+      margin-right: 4px;
+    }
+
+    .gpu-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.12);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.9);
+    }
+
+    .gpu-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--success);
+      flex-shrink: 0;
+    }
+
+    .gpu-dot.off { background: var(--danger); }
+
+    /* ======== App Layout ======== */
+    .app-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    .main-content {
+      flex: 1;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 1fr 370px;
+      gap: 16px;
+      overflow: hidden;
+    }
+
+    /* ======== Video Section ======== */
+    .video-section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 0;
+    }
+
+    .video-card {
+      background: var(--bg-card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* Dropzone */
+    .video-dropzone {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.25s, border-color 0.25s;
+      position: relative;
+      -webkit-app-region: no-drag;
+    }
+
+    .video-dropzone:hover,
+    .video-dropzone.drag-over {
+      background: rgba(99, 102, 241, 0.08);
+    }
+
+    .video-dropzone.drag-over::after {
+      content: '';
+      position: absolute;
+      inset: 8px;
+      border: 2px dashed var(--primary);
+      border-radius: 8px;
+      pointer-events: none;
+    }
+
+    .video-dropzone.has-video { cursor: default; }
+
+    .dropzone-content {
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .dropzone-icon {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 16px;
+      background: rgba(99, 102, 241, 0.12);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .dropzone-icon svg {
+      color: var(--primary);
+    }
+
+    .dropzone-text {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .dropzone-subtext {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .video-dropzone video {
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 0;
+      display: block;
+    }
+
+    /* ======== Video Controls ======== */
+    .video-controls {
+      background: var(--bg-card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 12px;
+      flex-shrink: 0;
+    }
+
+    .video-timeline {
+      width: 100%;
+      height: 48px;
+      background: var(--bg-dark);
+      border-radius: 6px;
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+    }
+
+    .timeline-progress {
+      position: absolute;
+      top: 0; left: 0;
+      height: 100%;
+      background: rgba(99, 102, 241, 0.25);
+      pointer-events: none;
+    }
+
+    .segment-markers { position: absolute; inset: 0; pointer-events: none; }
+
+    .segment-marker {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      background: rgba(99, 102, 241, 0.18);
+      border-left: 2px solid var(--primary);
+      border-right: 2px solid var(--primary);
+    }
+
+    .playback-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    .btn-icon {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      border: none;
+      background: var(--primary);
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, transform 0.15s;
+    }
+
+    .btn-icon:hover { background: var(--primary-hover); transform: scale(1.08); }
+
+    .time-display {
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+      color: var(--text-secondary);
+      min-width: 140px;
+      text-align: center;
+    }
+
+    /* ======== Sidebar ======== */
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow-y: auto;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+
+    .card-header {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .card-title { font-size: 14px; font-weight: 600; }
+
+    .card-body { padding: 12px 14px; }
+
+    /* ======== Segment List ======== */
+    .segment-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+
+    .segment-item {
+      background: var(--bg-dark);
+      border-radius: 8px;
+      padding: 10px;
+      border: 1px solid var(--border);
+    }
+
+    .segment-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .segment-number {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .segment-remove {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 2px;
+      border-radius: 4px;
+      display: flex;
+    }
+
+    .segment-remove:hover { color: var(--danger); background: rgba(239,68,68,0.1); }
+
+    .segment-times {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .time-input-group { flex: 1; }
+
+    .time-input-group label {
+      display: block;
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-bottom: 3px;
+    }
+
+    .time-input-group input {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 8px;
+      color: var(--text-primary);
+      font-size: 13px;
+      cursor: text;
+    }
+
+    .time-input-group input:focus { outline: none; border-color: var(--primary); }
+
+    .segment-options {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .speed-select {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 8px;
+      color: var(--text-primary);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .speed-select:focus { outline: none; border-color: var(--primary); }
+
+    /* ======== Buttons ======== */
+    .btn {
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      border: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-secondary {
+      background: var(--bg-dark);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover { background: var(--border); }
+
+    .btn-success {
+      background: var(--success);
+      color: #fff;
+    }
+
+    .btn-success:hover { background: #16a34a; }
+    .btn-success:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+    /* ======== Output Options ======== */
+    .output-options {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .option-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .option-label { font-size: 13px; color: var(--text-secondary); }
+
+    .toggle-switch {
+      position: relative;
+      width: 40px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background: var(--border);
+      border-radius: 22px;
+      transition: 0.25s;
+    }
+
+    .toggle-slider::before {
+      position: absolute;
+      content: "";
+      width: 16px; height: 16px;
+      left: 3px; bottom: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: 0.25s;
+    }
+
+    .toggle-switch input:checked + .toggle-slider { background: var(--primary); }
+    .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+    .toggle-switch input:disabled + .toggle-slider { opacity: 0.4; cursor: not-allowed; }
+
+    .gif-options {
+      background: var(--bg-dark);
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .gif-options-row { display: flex; gap: 10px; }
+
+    .gif-option { flex: 1; }
+
+    .gif-option label {
+      display: block;
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-bottom: 3px;
+    }
+
+    .gif-option input {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 8px;
+      color: var(--text-primary);
+      font-size: 13px;
+      cursor: text;
+    }
+
+    .gif-option input:focus { outline: none; border-color: var(--primary); }
+
+    /* ======== Process Button ======== */
+    .process-section { margin-top: auto; padding-top: 12px; }
+
+    .process-btn { width: 100%; padding: 12px; font-size: 14px; font-weight: 600; }
+
+    /* ======== Processing Modal ======== */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.25s;
+    }
+
+    .modal-overlay.active { opacity: 1; visibility: visible; }
+
+    .modal-content {
+      background: var(--bg-card);
+      border-radius: 16px;
+      padding: 2rem;
+      max-width: 380px;
+      width: 90%;
+      text-align: center;
+      transform: scale(0.92);
+      transition: transform 0.25s;
+    }
+
+    .modal-overlay.active .modal-content { transform: scale(1); }
+
+    .spinner {
+      width: 48px; height: 48px;
+      border: 3px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 14px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .progress-bar-container {
+      background: var(--bg-dark);
+      border-radius: 6px;
+      height: 6px;
+      overflow: hidden;
+      margin-top: 14px;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), #8b5cf6);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    /* ======== Footer ======== */
+    .app-footer {
+      padding: 8px 16px;
+      background: var(--bg-card);
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+    }
+
+    /* ======== Scrollbar ======== */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+    /* ======== Misc ======== */
+    .empty-text {
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 13px;
+      padding: 14px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+
+    <!-- Custom Titlebar -->
+    <div class="titlebar">
+      <div class="titlebar-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+        <span>SimpleCutter</span>
+      </div>
+
+      <div class="titlebar-right">
+        <div class="gpu-badge">
+          <span class="gpu-dot" id="gpuDot"></span>
+          <span id="gpuStatusText">Detecting GPU...</span>
+        </div>
+        <div class="titlebar-controls">
+          <button class="titlebar-btn" id="btnMinimize" title="Minimize">
+            <svg width="12" height="12" viewBox="0 0 12 12"><rect y="5" width="12" height="1.5" fill="currentColor"/></svg>
+          </button>
+          <button class="titlebar-btn" id="btnMaximize" title="Maximize">
+            <svg width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+          </button>
+          <button class="titlebar-btn close" id="btnClose" title="Close">
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
         </div>
       </div>
     </div>
 
-    
-    <div class="container" id="video">
-        <h2 id="draghere">Drag a video here</h2>
+    <!-- Main Content -->
+    <main class="main-content">
+
+      <!-- Left: Video -->
+      <section class="video-section">
+        <div class="video-card">
+          <div class="video-dropzone" id="videoDropzone">
+            <div class="dropzone-content" id="dropzoneContent">
+              <div class="dropzone-icon">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/>
+                  <line x1="7" y1="2" x2="7" y2="22"/>
+                  <line x1="17" y1="2" x2="17" y2="22"/>
+                  <line x1="2" y1="12" x2="22" y2="12"/>
+                  <line x1="2" y1="7" x2="7" y2="7"/>
+                  <line x1="2" y1="17" x2="7" y2="17"/>
+                  <line x1="17" y1="7" x2="22" y2="7"/>
+                  <line x1="17" y1="17" x2="22" y2="17"/>
+                </svg>
+              </div>
+              <p class="dropzone-text">Drop your video here</p>
+              <p class="dropzone-subtext">or click to browse files</p>
+            </div>
+            <video id="videoPlayer" style="display:none;" controls></video>
+          </div>
+        </div>
+
+        <div class="video-controls" id="videoControls" style="display:none;">
+          <div class="video-timeline" id="videoTimeline">
+            <div class="timeline-progress" id="timelineProgress"></div>
+            <div class="segment-markers" id="segmentMarkers"></div>
+          </div>
+          <div class="playback-controls">
+            <button class="btn-icon" id="btnRewind" title="Back 5s">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>
+            </button>
+            <button class="btn-icon" id="btnPlayPause" title="Play / Pause">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" id="playIcon"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" id="pauseIcon" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            </button>
+            <button class="btn-icon" id="btnForward" title="Forward 5s">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg>
+            </button>
+            <div class="time-display">
+              <span id="currentTime">0:00</span> / <span id="duration">0:00</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right: Sidebar -->
+      <aside class="sidebar">
+
+        <!-- Segments -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Video Segments</h3>
+            <button class="btn btn-sm btn-secondary" id="addSegmentBtn">+ Add</button>
+          </div>
+          <div class="card-body">
+            <div class="segment-list" id="segmentList">
+              <p class="empty-text">Load a video to add segments</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Output Options -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Output Options</h3>
+          </div>
+          <div class="card-body">
+            <div class="output-options">
+
+              <div class="option-row">
+                <span class="option-label">Create GIF</span>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="createGifToggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+
+              <div class="gif-options" id="gifOptions" style="display:none;">
+                <div class="gif-options-row">
+                  <div class="gif-option">
+                    <label>Width (px)</label>
+                    <input type="number" id="gifWidth" value="480" min="100" max="1920">
+                  </div>
+                  <div class="gif-option">
+                    <label>FPS</label>
+                    <input type="number" id="gifFps" value="15" min="1" max="60">
+                  </div>
+                </div>
+              </div>
+
+              <div class="option-row" id="hwEncodeRow">
+                <span class="option-label">Hardware Encoding</span>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="hwEncodeToggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div id="hwEncodeHint" style="display:none; font-size:11px; color:var(--text-secondary); margin-top:-6px;">
+                No GPU encoder detected &mdash; using CPU
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- Process -->
+        <div class="process-section">
+          <button class="btn btn-success process-btn" id="processBtn" disabled>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Process Video
+          </button>
+        </div>
+
+      </aside>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <span id="appVersion">SimpleCutter v2.0.0</span>
+      <span>Powered by FFmpeg</span>
+    </footer>
+  </div>
+
+  <!-- Processing Modal -->
+  <div class="modal-overlay" id="processingModal">
+    <div class="modal-content">
+      <div class="spinner"></div>
+      <h3 style="margin:0 0 6px; font-size:16px;">Processing Video</h3>
+      <p style="color:var(--text-secondary); margin:0; font-size:13px;" id="processingStatus">Preparing...</p>
+      <div class="progress-bar-container">
+        <div class="progress-bar-fill" id="progressBar"></div>
+      </div>
     </div>
+  </div>
 
-    <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
-    <script src="js/jquery.min.js"></script>
-    
-    <!-- Include all compiled plugins (below), or include individual files as needed -->
-    <script src="js/bootstrap.min.js"></script>
+  <!-- Scripts: renderer first so electronAPI is available for controller -->
+  <script src="renderer.js"></script>
+  <script src="js/core_functions.js"></script>
+  <script src="js/controller.js"></script>
 
-    <script src="js/core_functions.js"></script>
+  <script>
+    // Window controls (frameless)
+    const { ipcRenderer: _ipc } = require('electron');
 
-    <script src="js/controller.js"></script>
-    <script src="renderer.js"></script>
+    document.getElementById('btnMinimize').addEventListener('click', () => {
+      _ipc.send('win-minimize');
+    });
+    document.getElementById('btnMaximize').addEventListener('click', () => {
+      _ipc.send('win-maximize');
+    });
+    document.getElementById('btnClose').addEventListener('click', () => {
+      _ipc.send('win-close');
+    });
 
-    <script>
-      document.addEventListener("keydown", function (e) {
-        if (e.which === 123) {
-          require('electron').remote.getCurrentWindow().toggleDevTools();
-        } else if (e.which === 116) {
-          location.reload();
-        }
-      });
-</script>
-  </body>
+    // Dev tools shortcut (F12) and reload (F5)
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'F12') {
+        require('electron').ipcRenderer.send('toggle-devtools');
+      } else if (e.key === 'F5') {
+        location.reload();
+      }
+    });
+  </script>
+</body>
 </html>

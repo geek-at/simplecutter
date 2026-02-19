@@ -1,35 +1,87 @@
 {
-  "name": "dta-cutter",
-  "version": "1.0.8",
-  "description": "can cut and combine videos",
+  "name": "simplecutter",
+  "version": "2.0.0",
+  "description": "A modern video cutter for gaming clips with multi-segment support",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "electron-builder --linux && electron-builder --win -c.win.target=zip",
+    "dist:win": "electron-builder --win -c.win.target=zip",
+    "dist:linux": "electron-builder --linux",
+    "dist:all": "electron-builder --linux && electron-builder --win -c.win.target=zip"
   },
   "keywords": [
     "ffmpeg",
-    "cutting"
+    "video",
+    "cutter",
+    "gaming"
   ],
-  "author": "Haschek Solutions",
+  "author": {
+    "name": "Haschek Solutions",
+    "email": "info@haschek.solutions"
+  },
   "license": "CC0-1.0",
   "devDependencies": {
-    "electron": "^24.8.5",
-    "electron-builder": "^23.6.0"
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
   },
   "dependencies": {
-    "electron-updater": "^5.3.0",
-    "fluent-ffmpeg": "^2.1.2",
-    "node-cmd": "^2.0.0",
-    "request": "^2.81.0",
-    "sentencer": "^0.1.5"
+    "electron-updater": "^6.3.9",
+    "fluent-ffmpeg": "^2.1.3",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0"
   },
   "build": {
-    "appId": "hascheksolutions.ffmpeg",
-    "extraResources": "ffmpeg",
+    "appId": "hascheksolutions.simplecutter",
+    "productName": "SimpleCutter",
+    "copyright": "Copyright © 2024 Haschek Solutions",
+    "extraResources": [
+      {
+        "from": "ffmpeg",
+        "to": "ffmpeg",
+        "filter": ["**/*"]
+      }
+    ],
+    "files": [
+      "main.js",
+      "renderer.js",
+      "index.html",
+      "js/**/*",
+      "css/**/*",
+      "fonts/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
     "mac": {
-      "category": "hs.ffmpeg.parser"
+      "category": "public.app-category.video",
+      "icon": "build/icon.icns"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Video",
+      "icon": "build/"
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "https://your-update-server.com/"
     }
   }
 }
