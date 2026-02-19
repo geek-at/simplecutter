@@ -80,8 +80,9 @@
       "icon": "build/"
     },
     "publish": {
-      "provider": "generic",
-      "url": "https://your-update-server.com/"
+      "provider": "github",
+      "owner": "geek-at",
+      "repo": "simplecutter"
     }
   }
 }
