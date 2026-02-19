@@ -24,6 +24,9 @@ function cacheDom() {
     segmentMarkers:   document.getElementById('segmentMarkers'),
     segmentList:      document.getElementById('segmentList'),
     addSegmentBtn:    document.getElementById('addSegmentBtn'),
+    btnMarkFrom:      document.getElementById('btnMarkFrom'),
+    btnMarkTo:        document.getElementById('btnMarkTo'),
+    btnScreenshot:    document.getElementById('btnScreenshot'),
     processBtn:       document.getElementById('processBtn'),
     btnPlayPause:     document.getElementById('btnPlayPause'),
     btnRewind:        document.getElementById('btnRewind'),
@@ -158,6 +161,11 @@ function loadVideo(filePath) {
   el.videoControls.style.display = 'block';
   el.videoDropzone.classList.add('has-video');
 
+  // Enable mark buttons
+  el.btnMarkFrom.disabled = false;
+  el.btnMarkTo.disabled = false;
+  el.btnScreenshot.disabled = false;
+
   // Use file:// protocol — works because webSecurity:true but nodeIntegration is on
   el.videoPlayer.src = `file://${filePath}`;
 
@@ -226,12 +234,87 @@ function setupVideoControls() {
 function setupSegmentControls() {
   el.addSegmentBtn.addEventListener('click', () => {
     if (!appState.videoPath) return;
-    const start = 0;
-    const end = Math.min(10, appState.videoDuration);
-    addSegment(start, end, 1);
+    // Default new segment starts at current playback position
+    const cur = el.videoPlayer.currentTime || 0;
+    const end = Math.min(cur + 10, appState.videoDuration);
+    addSegment(cur, end, 1);
   });
 
+  // "From Here" — sets start of last segment (or creates one) to current time
+  el.btnMarkFrom.addEventListener('click', () => markFrom());
+  // "To Here" — sets end of last segment to current time
+  el.btnMarkTo.addEventListener('click', () => markTo());
+
+  // Keyboard shortcuts: I = mark from, O = mark to, S = screenshot
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.key === 'i' || e.key === 'I') { e.preventDefault(); markFrom(); }
+    if (e.key === 'o' || e.key === 'O') { e.preventDefault(); markTo(); }
+    if (e.key === 's' || e.key === 'S') { e.preventDefault(); takeScreenshot(); }
+  });
+
+  el.btnScreenshot.addEventListener('click', () => takeScreenshot());
+
   el.processBtn.addEventListener('click', processVideo);
+}
+
+function markFrom() {
+  if (!appState.videoPath) return;
+  const cur = el.videoPlayer.currentTime;
+
+  if (appState.segments.length === 0) {
+    // Create a new segment starting here, ending 10s later (or at video end)
+    addSegment(cur, Math.min(cur + 10, appState.videoDuration), 1);
+  } else {
+    // Update the last segment's start time
+    const last = appState.segments[appState.segments.length - 1];
+    last.startTime = cur;
+    if (last.endTime <= cur) last.endTime = Math.min(cur + 1, appState.videoDuration);
+    renderSegments();
+    updateProcessButton();
+  }
+}
+
+function markTo() {
+  if (!appState.videoPath) return;
+  const cur = el.videoPlayer.currentTime;
+
+  if (appState.segments.length === 0) {
+    // Create a segment from 0 to here
+    addSegment(0, cur, 1);
+  } else {
+    // Update the last segment's end time
+    const last = appState.segments[appState.segments.length - 1];
+    last.endTime = cur;
+    if (last.startTime >= cur) last.startTime = Math.max(cur - 1, 0);
+    renderSegments();
+    updateProcessButton();
+  }
+}
+
+async function takeScreenshot() {
+  if (!appState.videoPath) return;
+  const timestamp = el.videoPlayer.currentTime;
+
+  // Brief visual feedback
+  const origText = el.btnScreenshot.innerHTML;
+  el.btnScreenshot.disabled = true;
+
+  try {
+    const result = await window.electronAPI.saveScreenshot({
+      videoPath: appState.videoPath,
+      timestamp
+    });
+    // Flash green feedback
+    el.btnScreenshot.innerHTML = '&#10003; Saved!';
+    setTimeout(() => { el.btnScreenshot.innerHTML = origText; el.btnScreenshot.disabled = false; }, 1500);
+    // Reveal in file explorer
+    if (result.path) window.electronAPI.showInFolder(result.path);
+  } catch (err) {
+    console.error('Screenshot error:', err);
+    el.btnScreenshot.innerHTML = '&#10007; Failed';
+    setTimeout(() => { el.btnScreenshot.innerHTML = origText; el.btnScreenshot.disabled = false; }, 2000);
+  }
 }
 
 function addSegment(startTime, endTime, speed) {
@@ -333,7 +416,8 @@ async function processVideo() {
   el.progressBar.style.width = '0%';
 
   const isGif = el.createGifToggle.checked;
-  const outputPath = await window.electronAPI.selectOutputDir();
+  const sourceDir = appState.videoPath ? appState.videoPath.replace(/[\\/][^\\/]+$/, '') : '';
+  const outputPath = await window.electronAPI.selectOutputDir({ isGif, sourceDir });
 
   if (!outputPath) {
     el.processingModal.classList.remove('active');
@@ -371,10 +455,19 @@ async function processVideo() {
     el.processingStatus.textContent = 'Done!';
     el.progressBar.style.width = '100%';
     setTimeout(() => el.processingModal.classList.remove('active'), 1500);
+    // Reveal in file explorer
+    window.electronAPI.showInFolder(finalPath);
   } catch (err) {
     console.error('Processing error:', err);
-    el.processingStatus.textContent = `Error: ${err.message || err}`;
-    setTimeout(() => el.processingModal.classList.remove('active'), 4000);
+    // Show a concise error — extract the last meaningful line from FFmpeg stderr
+    let msg = String(err.message || err);
+    const lines = msg.split('\n').filter(l => l.trim());
+    // Look for lines that describe the actual error (not just stream info)
+    const errorLine = lines.reverse().find(l =>
+      /error|invalid|failed|no such|cannot|unable|not found|unrecognized|does not/i.test(l)
+    );
+    el.processingStatus.textContent = `Error: ${errorLine || lines[0] || 'Processing failed'}`;
+    setTimeout(() => el.processingModal.classList.remove('active'), 6000);
   }
 }
 

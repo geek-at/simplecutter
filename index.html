@@ -283,6 +283,29 @@
       text-align: center;
     }
 
+    .mark-btn {
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-dark);
+      color: var(--text-primary);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .mark-btn:hover { background: var(--bg-card); border-color: var(--primary); }
+    .mark-btn:disabled { opacity: 0.4; cursor: default; }
+    .mark-btn:disabled:hover { background: var(--bg-dark); border-color: var(--border); }
+    .mark-btn .mark-key { font-size: 10px; opacity: 0.5; margin-left: 4px; }
+    .mark-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+
     /* ======== Sidebar ======== */
     .sidebar {
       display: flex;
@@ -671,6 +694,20 @@
             <div class="time-display">
               <span id="currentTime">0:00</span> / <span id="duration">0:00</span>
             </div>
+            <div class="mark-controls">
+              <button class="mark-btn" id="btnScreenshot" disabled title="Save screenshot of current frame (S)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3.5"/><path d="M3 9h2M19 9h2"/>
+                </svg>
+                Screenshot <span class="mark-key">[S]</span>
+              </button>
+              <button class="mark-btn" id="btnMarkFrom" disabled title="Set start of segment to current position (I)">
+                &#9654; From here <span class="mark-key">[I]</span>
+              </button>
+              <button class="mark-btn" id="btnMarkTo" disabled title="Set end of segment to current position (O)">
+                To here &#9632; <span class="mark-key">[O]</span>
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -758,7 +795,7 @@
     <div class="modal-content">
       <div class="spinner"></div>
       <h3 style="margin:0 0 6px; font-size:16px;">Processing Video</h3>
-      <p style="color:var(--text-secondary); margin:0; font-size:13px;" id="processingStatus">Preparing...</p>
+      <p style="color:var(--text-secondary); margin:0; font-size:13px; max-width:400px; overflow:hidden; text-overflow:ellipsis; word-break:break-word; max-height:3.6em; line-height:1.2em;" id="processingStatus">Preparing...</p>
       <div class="progress-bar-container">
         <div class="progress-bar-fill" id="progressBar"></div>
       </div>

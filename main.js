@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
@@ -273,12 +273,18 @@ ipcMain.handle('select-video', async () => {
   return result.filePaths[0];
 });
 
-ipcMain.handle('select-output-dir', async () => {
+ipcMain.handle('select-output-dir', async (event, opts = {}) => {
+  const isGif = opts.isGif || false;
+  const sourceDir = opts.sourceDir || '';
+  const ext = isGif ? '.gif' : '.mp4';
+  const defaultPath = sourceDir ? path.join(sourceDir, ext) : ext;
+  const filters = isGif
+    ? [{ name: 'GIF Animation', extensions: ['gif'] }, { name: 'All Files', extensions: ['*'] }]
+    : [{ name: 'MP4 Video', extensions: ['mp4'] }, { name: 'GIF Animation', extensions: ['gif'] }, { name: 'All Files', extensions: ['*'] }];
+
   const result = await dialog.showSaveDialog(mainWindow, {
-    filters: [
-      { name: 'MP4 Video', extensions: ['mp4'] },
-      { name: 'GIF Animation', extensions: ['gif'] }
-    ]
+    defaultPath,
+    filters
   });
   
   if (result.canceled) {
@@ -292,12 +298,68 @@ ipcMain.handle('get-ffmpeg-path', () => {
   return getFFmpegPath();
 });
 
+ipcMain.handle('show-in-folder', async (event, filePath) => {
+  // Detect WSL — shell.showItemInFolder uses xdg-open which fails without a Linux file manager
+  const isWSL = process.platform === 'linux' && fs.existsSync('/proc/version') &&
+    fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft');
+
+  if (isWSL) {
+    try {
+      // Convert Linux path to Windows path and open in Explorer with file selected
+      const winPath = await runCmd(`wslpath -w "${filePath}"`);
+      spawn('explorer.exe', ['/select,', winPath.trim()], { detached: true, stdio: 'ignore' });
+    } catch (_) {
+      // Fallback: just open the containing folder
+      const dir = await runCmd(`wslpath -w "${path.dirname(filePath)}"`);
+      spawn('explorer.exe', [dir.trim()], { detached: true, stdio: 'ignore' });
+    }
+  } else {
+    shell.showItemInFolder(filePath);
+  }
+});
+
+// Save a screenshot (PNG frame from video)
+ipcMain.handle('save-screenshot', async (event, opts) => {
+  const { videoPath, timestamp } = opts;
+  const ffmpegPath = getFFmpegPath();
+
+  // Build filename: first 20 chars of video name + timestamp
+  const videoName = path.basename(videoPath, path.extname(videoPath))
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .substring(0, 20);
+  const ts = timestamp.toFixed(2).replace('.', 's') + 'ms';
+  const outName = `${videoName}_${ts}.png`;
+  const outPath = path.join(path.dirname(videoPath), outName);
+
+  return new Promise((resolve, reject) => {
+    const args = [
+      '-hide_banner', '-loglevel', 'error',
+      '-ss', String(timestamp),
+      '-i', videoPath,
+      '-frames:v', '1',
+      '-y', outPath
+    ];
+
+    const proc = spawn(ffmpegPath, args, { timeout: 10000 });
+    let stderr = '';
+    proc.stderr.on('data', d => stderr += d.toString());
+
+    proc.on('close', (code) => {
+      if (code === 0) resolve({ success: true, path: outPath });
+      else reject(new Error(`Screenshot failed: ${stderr.trim().split('\n').pop()}`));
+    });
+    proc.on('error', reject);
+  });
+});
+
 // Process video segments
 ipcMain.handle('process-video', async (event, options) => {
   const { segments, outputPath, useHwAccel, createGif, gifOptions } = options;
   const ffmpegPath = getFFmpegPath();
   
   return new Promise((resolve, reject) => {
+    const hasAudio = !createGif;
+
     // Build filter complex for multiple segments
     let filterComplex = '';
     let inputs = [];
@@ -313,13 +375,15 @@ ipcMain.handle('process-video', async (event, options) => {
       if (seg.speed !== 1) {
         const pts = 1 / seg.speed;
         videoFilter = `setpts=${pts}*PTS`;
-        // atempo only supports 0.5-2.0, chain multiple for extreme speeds
-        let speed = seg.speed;
-        let atempoChain = [];
-        while (speed > 2.0) { atempoChain.push('atempo=2.0'); speed /= 2.0; }
-        while (speed < 0.5) { atempoChain.push('atempo=0.5'); speed *= 2.0; }
-        atempoChain.push(`atempo=${speed}`);
-        audioFilter = atempoChain.join(',');
+        if (hasAudio) {
+          // atempo only supports 0.5-2.0, chain multiple for extreme speeds
+          let speed = seg.speed;
+          let atempoChain = [];
+          while (speed > 2.0) { atempoChain.push('atempo=2.0'); speed /= 2.0; }
+          while (speed < 0.5) { atempoChain.push('atempo=0.5'); speed *= 2.0; }
+          atempoChain.push(`atempo=${speed}`);
+          audioFilter = atempoChain.join(',');
+        }
       }
       
       // Apply trim
@@ -330,22 +394,34 @@ ipcMain.handle('process-video', async (event, options) => {
         videoFilter = trimFilter;
       }
       
-      if (audioFilter) {
-        audioFilter = `atrim=start=${seg.startTime}:end=${seg.endTime},asetpts=PTS-STARTPTS,${audioFilter}`;
-      }
-      
       filterComplex += `[${index}:v]${videoFilter}[v${index}];`;
-      if (seg.hasAudio !== false) {
+
+      if (hasAudio) {
+        if (audioFilter) {
+          audioFilter = `atrim=start=${seg.startTime}:end=${seg.endTime},asetpts=PTS-STARTPTS,${audioFilter}`;
+        }
         filterComplex += `[${index}:a]${audioFilter || `atrim=start=${seg.startTime}:end=${seg.endTime},asetpts=PTS-STARTPTS`}[a${index}];`;
+        concatInputs += `[v${index}][a${index}]`;
+      } else {
+        concatInputs += `[v${index}]`;
       }
-      concatInputs += `[v${index}][a${index}]`;
     });
     
-    // Add concatenation
-    filterComplex += `${concatInputs}concat=n=${segments.length}:v=1:a=1[outv][outa]`;
+    // Concatenation — video-only for GIF, video+audio for MP4
+    if (hasAudio) {
+      filterComplex += `${concatInputs}concat=n=${segments.length}:v=1:a=1[outv][outa]`;
+    } else {
+      // GIF: video-only concat, then apply GIF-specific filters
+      const gifFps = gifOptions.fps || 15;
+      const gifW   = gifOptions.width || 480;
+      filterComplex += `${concatInputs}concat=n=${segments.length}:v=1:a=0[_gif];`;
+      filterComplex += `[_gif]fps=${gifFps},scale=${gifW}:-1:flags=lanczos,split[s0][s1];`;
+      filterComplex += `[s0]palettegen=max_colors=128:stats_mode=diff[p];`;
+      filterComplex += `[s1][p]paletteuse=dither=bayer:bayer_scale=5[outv]`;
+    }
     
     // Use the tested hardware encoder from GPU detection (if requested)
-    const hwEncoder = useHwAccel ? gpuInfo.hwEncoder : null;
+    const hwEncoder = (!createGif && useHwAccel) ? gpuInfo.hwEncoder : null;
     
     // Build hardware acceleration input args
     let hwAccelArgs = [];
@@ -358,9 +434,7 @@ ipcMain.handle('process-video', async (event, options) => {
     
     // Build output args
     const outputArgs = [];
-    if (createGif) {
-      outputArgs.push('-vf', `fps=${gifOptions.fps || 15},scale=${gifOptions.width || 480}:-1:flags=lanczos`);
-    } else {
+    if (!createGif) {
       if (hwEncoder) {
         outputArgs.push('-c:v', hwEncoder);
         if (hwEncoder === 'h264_nvenc') outputArgs.push('-preset', 'fast');
@@ -370,12 +444,15 @@ ipcMain.handle('process-video', async (event, options) => {
       outputArgs.push('-c:a', 'aac', '-b:a', '192k');
     }
     
+    // Build final command
+    const mapArgs = ['-map', '[outv]'];
+    if (hasAudio) mapArgs.push('-map', '[outa]');
+
     const args = [
       ...hwAccelArgs,
       ...inputs,
       '-filter_complex', filterComplex,
-      '-map', '[outv]',
-      '-map', '[outa]',
+      ...mapArgs,
       ...outputArgs,
       '-y',
       outputPath
