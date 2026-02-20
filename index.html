@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SimpleCutter</title>
+  <title>DTA Cutter</title>
   <link rel="icon" type="image/png" href="build/icon_32.png">
   
   <style>
@@ -626,7 +626,7 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polygon points="5 3 19 12 5 21 5 3"/>
         </svg>
-        <span>SimpleCutter</span>
+        <span>DTA Cutter</span>
       </div>
 
       <div class="titlebar-right">
@@ -755,6 +755,22 @@
                     <input type="number" id="gifFps" value="15" min="1" max="60">
                   </div>
                 </div>
+              </div>
+
+              <div class="option-row">
+                <span class="option-label">Half Resolution</span>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="halfResToggle">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+
+              <div class="option-row">
+                <span class="option-label">Limit to 30 FPS</span>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="fps30Toggle">
+                  <span class="toggle-slider"></span>
+                </label>
               </div>
 
               <div class="option-row" id="hwEncodeRow">

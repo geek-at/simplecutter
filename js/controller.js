@@ -40,6 +40,8 @@ function cacheDom() {
     gifWidth:         document.getElementById('gifWidth'),
     gifFps:           document.getElementById('gifFps'),
     hwEncodeToggle:   document.getElementById('hwEncodeToggle'),
+    halfResToggle:    document.getElementById('halfResToggle'),
+    fps30Toggle:      document.getElementById('fps30Toggle'),
     hwEncodeHint:     document.getElementById('hwEncodeHint'),
     gpuDot:           document.getElementById('gpuDot'),
     gpuStatusText:    document.getElementById('gpuStatusText'),
@@ -143,7 +145,15 @@ function setupDragAndDrop() {
 
     const files = e.dataTransfer.files;
     if (files.length > 0) {
-      const filePath = files[0].path;
+      // Electron 12+ removed File.path; use webUtils.getPathForFile instead
+      let filePath = '';
+      try {
+        const { webUtils } = require('electron');
+        filePath = webUtils.getPathForFile(files[0]);
+      } catch (_) {
+        // Fallback for older Electron versions
+        filePath = files[0].path || '';
+      }
       if (filePath) loadVideo(filePath);
     }
   });
@@ -439,12 +449,16 @@ async function processVideo() {
   }));
 
   const useHW = el.hwEncodeToggle.checked && !el.hwEncodeToggle.disabled;
+  const halfRes = el.halfResToggle.checked;
+  const limitFps30 = el.fps30Toggle.checked;
 
   try {
     await window.electronAPI.processVideo({
       segments,
       outputPath: finalPath,
       useHwAccel: useHW,
+      halfResolution: halfRes,
+      limitFps30,
       createGif: isGif,
       gifOptions: {
         width: parseInt(el.gifWidth.value) || 480,

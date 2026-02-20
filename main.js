@@ -355,7 +355,7 @@ ipcMain.handle('save-screenshot', async (event, opts) => {
 
 // Process video segments
 ipcMain.handle('process-video', async (event, options) => {
-  const { segments, outputPath, useHwAccel, createGif, gifOptions } = options;
+  const { segments, outputPath, useHwAccel, createGif, gifOptions, halfResolution, limitFps30 } = options;
   const ffmpegPath = getFFmpegPath();
   
   return new Promise((resolve, reject) => {
@@ -395,6 +395,16 @@ ipcMain.handle('process-video', async (event, options) => {
         videoFilter = trimFilter;
       }
       
+      // Apply half-resolution scale if requested (not for GIF — GIF has its own scale)
+      if (halfResolution && !createGif) {
+        videoFilter += `,scale=iw/2:ih/2:flags=lanczos`;
+      }
+
+      // Apply 30fps cap if requested (not for GIF — GIF has its own fps)
+      if (limitFps30 && !createGif) {
+        videoFilter += `,fps=30`;
+      }
+
       filterComplex += `[${index}:v]${videoFilter}[v${index}];`;
 
       if (hasAudio) {
