@@ -6,6 +6,7 @@ const { spawn, exec } = require('child_process');
 
 // Keep a global reference of the window object
 let mainWindow = null;
+let updateDownloaded = false;
 
 // GPU detection results
 let gpuInfo = {
@@ -513,10 +514,14 @@ autoUpdater.on('download-progress', (progressObj) => {
 
 autoUpdater.on('update-downloaded', (info) => {
   console.log('Update downloaded:', info);
+  updateDownloaded = true;
 });
 
 // App events
 app.on('ready', async () => {
+  // Set correct app identity for Windows notifications & updater
+  app.setAppUserModelId('hascheksolutions.simplecutter');
+
   // Detect GPU first
   await detectGPU();
   
@@ -531,7 +536,12 @@ app.on('ready', async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    app.quit();
+    if (updateDownloaded) {
+      // Install the update and restart
+      autoUpdater.quitAndInstall(false, true);
+    } else {
+      app.quit();
+    }
   }
 });
 
