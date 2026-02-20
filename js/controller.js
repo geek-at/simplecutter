@@ -69,6 +69,8 @@ async function init() {
   try {
     const v = await window.electronAPI.getAppVersion();
     el.appVersion.textContent = `SimpleCutter v${v}`;
+    const titleVer = document.getElementById('titleVersion');
+    if (titleVer) titleVer.textContent = `v${v}`;
   } catch (_) { /* ignore */ }
 
   setupDragAndDrop();
