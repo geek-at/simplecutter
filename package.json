@@ -1,6 +1,6 @@
 {
   "name": "dta-cutter",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "A simple video cutter for gaming clips with multi-segment support",
   "main": "main.js",
   "scripts": {
