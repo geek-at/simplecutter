@@ -6,6 +6,7 @@ const { ipcRenderer } = require('electron');
 window.electronAPI = {
   getGPUInfo: () => ipcRenderer.invoke('get-gpu-info'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  getVideoFps: (filePath) => ipcRenderer.invoke('get-video-fps', filePath),
   selectVideo: () => ipcRenderer.invoke('select-video'),
   selectOutputDir: (opts) => ipcRenderer.invoke('select-output-dir', opts),
   saveScreenshot: (opts) => ipcRenderer.invoke('save-screenshot', opts),

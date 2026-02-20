@@ -181,12 +181,28 @@ function loadVideo(filePath) {
   // Use file:// protocol — works because webSecurity:true but nodeIntegration is on
   el.videoPlayer.src = `file://${filePath}`;
 
-  el.videoPlayer.onloadedmetadata = () => {
+  el.videoPlayer.onloadedmetadata = async () => {
     appState.videoDuration = el.videoPlayer.duration;
     el.duration.textContent = formatTime(appState.videoDuration);
 
+    // Detect FPS and disable 30fps toggle if already <= 30
+    try {
+      const fps = await window.electronAPI.getVideoFps(filePath);
+      appState.videoFps = fps;
+      if (fps > 0 && fps <= 30) {
+        el.fps30Toggle.checked = false;
+        el.fps30Toggle.disabled = true;
+        el.fps30Toggle.parentElement.title = `Video is already ${Math.round(fps)} fps`;
+      } else {
+        el.fps30Toggle.disabled = false;
+        el.fps30Toggle.parentElement.title = '';
+      }
+    } catch (_) {
+      el.fps30Toggle.disabled = false;
+    }
+
     // Auto-add first segment (first 10s or full duration)
-    addSegment(0, Math.min(10, appState.videoDuration), 1);
+    addSegment(0, Math.min(10, appState.videoDuration));
   };
 
   el.videoPlayer.ontimeupdate = () => {
@@ -329,7 +345,7 @@ async function takeScreenshot() {
   }
 }
 
-function addSegment(startTime, endTime, speed) {
+function addSegment(startTime, endTime, speed = 1) {
   appState.segments.push({
     id: Date.now() + Math.random(),
     startTime,

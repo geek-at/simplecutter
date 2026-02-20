@@ -200,6 +200,47 @@ function getFFmpegPath() {
   return ffmpegPath;
 }
 
+// Get FFprobe path (same dir as FFmpeg)
+function getFFprobePath() {
+  const platform = process.platform;
+  let dir = path.join(__dirname, 'ffmpeg', 'bin');
+  if (app.isPackaged) {
+    dir = path.join(process.resourcesPath, 'ffmpeg', 'bin');
+  }
+  const ext = platform === 'win32' ? '.exe' : '';
+  const p = path.join(dir, `ffprobe${ext}`);
+  if (!fs.existsSync(p)) return 'ffprobe';
+  return p;
+}
+
+// Detect video FPS using ffprobe
+function getVideoFps(filePath) {
+  return new Promise((resolve) => {
+    const probePath = getFFprobePath();
+    const args = [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=r_frame_rate',
+      '-of', 'csv=p=0',
+      filePath
+    ];
+    const proc = spawn(probePath, args, { timeout: 10000 });
+    let stdout = '';
+    proc.stdout.on('data', d => stdout += d.toString());
+    proc.on('close', () => {
+      // r_frame_rate comes as "num/den", e.g. "60/1" or "30000/1001"
+      const parts = stdout.trim().split('/');
+      if (parts.length === 2) {
+        const fps = parseInt(parts[0]) / parseInt(parts[1]);
+        resolve(isFinite(fps) ? fps : 0);
+      } else {
+        resolve(0);
+      }
+    });
+    proc.on('error', () => resolve(0));
+  });
+}
+
 // Create the main window
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -257,6 +298,10 @@ ipcMain.handle('get-gpu-info', async () => {
 
 ipcMain.handle('get-app-version', () => {
   return app.getVersion();
+});
+
+ipcMain.handle('get-video-fps', async (event, filePath) => {
+  return getVideoFps(filePath);
 });
 
 ipcMain.handle('select-video', async () => {
