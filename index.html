@@ -306,6 +306,34 @@
       margin-left: auto;
     }
 
+    /* From / To hero buttons */
+    .mark-hero-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .mark-hero-btn {
+      flex: 1;
+      padding: 12px 0;
+      border-radius: 8px;
+      border: 2px solid var(--border);
+      background: var(--bg-dark);
+      color: var(--text-primary);
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    }
+    .mark-hero-btn:hover { background: var(--bg-card); border-color: var(--primary); transform: translateY(-1px); }
+    .mark-hero-btn:disabled { opacity: 0.35; cursor: default; transform: none; }
+    .mark-hero-btn:disabled:hover { background: var(--bg-dark); border-color: var(--border); }
+    .mark-hero-btn .mark-key { font-size: 11px; opacity: 0.45; margin-left: 6px; }
+    .mark-hero-btn.mark-from { border-color: #22c55e; }
+    .mark-hero-btn.mark-from:hover:not(:disabled) { background: rgba(34,197,94,0.12); border-color: #22c55e; }
+    .mark-hero-btn.mark-to { border-color: #ef4444; }
+    .mark-hero-btn.mark-to:hover:not(:disabled) { background: rgba(239,68,68,0.12); border-color: #ef4444; }
+
     /* ======== Sidebar ======== */
     .sidebar {
       display: flex;
@@ -701,13 +729,15 @@
                 </svg>
                 Screenshot <span class="mark-key">[S]</span>
               </button>
-              <button class="mark-btn" id="btnMarkFrom" disabled title="Set start of segment to current position (I)">
-                &#9654; From here <span class="mark-key">[I]</span>
-              </button>
-              <button class="mark-btn" id="btnMarkTo" disabled title="Set end of segment to current position (O)">
-                To here &#9632; <span class="mark-key">[O]</span>
-              </button>
             </div>
+          </div>
+          <div class="mark-hero-row">
+            <button class="mark-hero-btn mark-from" id="btnMarkFrom" disabled title="Set start of segment to current position (I)">
+              &#9654; From here <span class="mark-key">[I]</span>
+            </button>
+            <button class="mark-hero-btn mark-to" id="btnMarkTo" disabled title="Set end of segment to current position (O)">
+              To here &#9632; <span class="mark-key">[O]</span>
+            </button>
           </div>
         </div>
       </section>
