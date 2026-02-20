@@ -351,6 +351,7 @@ function addSegment(startTime, endTime, speed = 1) {
     startTime,
     endTime,
     speed,
+    muted: false,
     hasAudio: true
   });
   renderSegments();
@@ -412,6 +413,12 @@ function renderSegments() {
           <option value="1.5"  ${seg.speed === 1.5  ? 'selected' : ''}>1.5x</option>
           <option value="2"    ${seg.speed === 2    ? 'selected' : ''}>2x</option>
         </select>
+        <label style="font-size:11px; color:var(--text-secondary); margin-left:auto; display:flex; align-items:center; gap:4px; cursor:pointer;">
+          <input type="checkbox" ${seg.muted ? 'checked' : ''}
+            onchange="updateSegment(${seg.id}, 'muted', this.checked); renderSegments();"
+            style="accent-color:var(--primary); cursor:pointer;">
+          Mute
+        </label>
       </div>
     </div>
   `).join('');
@@ -463,6 +470,7 @@ async function processVideo() {
     startTime: s.startTime,
     endTime:   s.endTime,
     speed:     s.speed,
+    muted:     s.muted || false,
     hasAudio:  !isGif
   }));
 

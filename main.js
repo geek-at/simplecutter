@@ -453,10 +453,16 @@ ipcMain.handle('process-video', async (event, options) => {
       filterComplex += `[${index}:v]${videoFilter}[v${index}];`;
 
       if (hasAudio) {
-        if (audioFilter) {
+        if (seg.muted) {
+          // Generate silence for the duration of this (trimmed + speed-adjusted) segment
+          const segDur = (seg.endTime - seg.startTime) / (seg.speed || 1);
+          filterComplex += `aevalsrc=0:d=${segDur.toFixed(4)}[a${index}];`;
+        } else if (audioFilter) {
           audioFilter = `atrim=start=${seg.startTime}:end=${seg.endTime},asetpts=PTS-STARTPTS,${audioFilter}`;
+          filterComplex += `[${index}:a]${audioFilter}[a${index}];`;
+        } else {
+          filterComplex += `[${index}:a]atrim=start=${seg.startTime}:end=${seg.endTime},asetpts=PTS-STARTPTS[a${index}];`;
         }
-        filterComplex += `[${index}:a]${audioFilter || `atrim=start=${seg.startTime}:end=${seg.endTime},asetpts=PTS-STARTPTS`}[a${index}];`;
         concatInputs += `[v${index}][a${index}]`;
       } else {
         concatInputs += `[v${index}]`;
