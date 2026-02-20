@@ -501,7 +501,10 @@ ipcMain.handle('process-video', async (event, options) => {
   });
 });
 
-// Auto-updater events
+// Auto-updater setup
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
 autoUpdater.on('checking-for-update', () => {
   console.log('Checking for update...');
 });
@@ -523,14 +526,16 @@ autoUpdater.on('download-progress', (progressObj) => {
 });
 
 autoUpdater.on('update-downloaded', (info) => {
-  console.log('Update downloaded:', info);
+  console.log('Update downloaded — will install on quit:', info);
   updateDownloaded = true;
+  // Notify the renderer so the user sees an in-app hint
+  mainWindow?.webContents.send('update-downloaded', info);
 });
 
 // App events
 app.on('ready', async () => {
   // Set correct app identity for Windows notifications & updater
-  app.setAppUserModelId('hascheksolutions.simplecutter');
+  app.setAppUserModelId('electron.app.dta-cutter');
 
   // Detect GPU first
   await detectGPU();
@@ -547,8 +552,8 @@ app.on('ready', async () => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     if (updateDownloaded) {
-      // Install the update and restart
-      autoUpdater.quitAndInstall(false, true);
+      // Force silent install + relaunch after
+      autoUpdater.quitAndInstall(true, true);
     } else {
       app.quit();
     }

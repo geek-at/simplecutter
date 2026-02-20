@@ -33,7 +33,7 @@
     "@ffmpeg-installer/ffmpeg": "^1.1.0"
   },
   "build": {
-    "appId": "hascheksolutions.ffmpeg",
+    "appId": "electron.app.dta-cutter",
     "productName": "DTA Cutter",
     "copyright": "Copyright © 2024 Haschek Solutions",
     "extraResources": [
@@ -65,10 +65,11 @@
       "icon": "build/icon.ico"
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "perMachine": false
     },
     "mac": {
       "category": "public.app-category.video",
