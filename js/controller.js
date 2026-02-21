@@ -485,6 +485,7 @@ async function processVideo() {
       useHwAccel: useHW,
       halfResolution: halfRes,
       limitFps30,
+      sourceFps: appState.videoFps || 0,
       createGif: isGif,
       gifOptions: {
         width: parseInt(el.gifWidth.value) || 480,

@@ -8,6 +8,34 @@ const { spawn, exec } = require('child_process');
 let mainWindow = null;
 let updateDownloaded = false;
 
+// ── Random filename generator ──
+const WORDS = [
+  // adjectives
+  'quick','bright','calm','bold','warm','cool','swift','keen','fair','wild',
+  'brave','crisp','dark','deep','dry','fast','fine','firm','flat','free',
+  'fresh','full','glad','gold','grand','great','green','happy','high','hot',
+  'kind','large','late','lean','light','long','loud','mild','neat','new',
+  'nice','old','open','pale','plain','prime','proud','pure','rare','raw',
+  'real','red','rich','ripe','round','safe','sharp','short','shy','slim',
+  'slow','small','smart','soft','solid','still','strong','sweet','tall','thin',
+  'tiny','tough','true','vast','warm','wide','wise','young','blue','pink',
+  // nouns
+  'fox','owl','bear','wolf','hawk','deer','hare','dove','swan','crow',
+  'lake','rain','snow','wind','moon','star','dawn','dusk','tree','leaf',
+  'rock','sand','wave','fire','rose','hill','peak','cave','song','drum',
+  'bell','path','gate','road','ship','sail','fish','frog','moth','wren',
+  'sky','sun','bay','oak','elm','ash','ivy','gem','orb','key',
+  // verbs
+  'runs','leaps','flies','dives','roams','sings','plays','drifts','rests','grows',
+  'falls','rises','turns','jumps','moves','flows','rides','calls','finds','holds',
+  'lifts','pulls','waits','works','reads','draws','walks','talks','hides','dances'
+];
+
+function generateRandomFilename() {
+  const pick = () => WORDS[Math.floor(Math.random() * WORDS.length)];
+  return `${pick()}-${pick()}-${pick()}`;
+}
+
 // GPU detection results
 let gpuInfo = {
   hasGPU: false,
@@ -324,8 +352,19 @@ ipcMain.handle('select-video', async () => {
 ipcMain.handle('select-output-dir', async (event, opts = {}) => {
   const isGif = opts.isGif || false;
   const sourceDir = opts.sourceDir || '';
-  const ext = isGif ? '.gif' : '.mp4';
-  const defaultPath = sourceDir ? path.join(sourceDir, ext) : ext;
+  const ext = isGif ? 'gif' : 'mp4';
+
+  // Create a "cut" subfolder next to the source video
+  let cutDir = sourceDir;
+  if (sourceDir) {
+    cutDir = path.join(sourceDir, 'cut');
+    try { fs.mkdirSync(cutDir, { recursive: true }); } catch (_) {}
+  }
+
+  // Generate a random three-word filename
+  const randomName = generateRandomFilename();
+  const defaultPath = path.join(cutDir, `${randomName}.${ext}`);
+
   const filters = isGif
     ? [{ name: 'GIF Animation', extensions: ['gif'] }, { name: 'All Files', extensions: ['*'] }]
     : [{ name: 'MP4 Video', extensions: ['mp4'] }, { name: 'GIF Animation', extensions: ['gif'] }, { name: 'All Files', extensions: ['*'] }];
@@ -402,7 +441,7 @@ ipcMain.handle('save-screenshot', async (event, opts) => {
 
 // Process video segments
 ipcMain.handle('process-video', async (event, options) => {
-  const { segments, outputPath, useHwAccel, createGif, gifOptions, halfResolution, limitFps30 } = options;
+  const { segments, outputPath, useHwAccel, createGif, gifOptions, halfResolution, limitFps30, sourceFps } = options;
   const ffmpegPath = getFFmpegPath();
   
   return new Promise((resolve, reject) => {
@@ -515,6 +554,12 @@ ipcMain.handle('process-video', async (event, options) => {
         outputArgs.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '20');
       }
       outputArgs.push('-c:a', 'aac', '-b:a', '192k');
+
+      // Preserve source framerate — hardware encoders may default to 30/25 fps
+      // when the framerate isn't explicitly set after filter_complex + concat
+      if (sourceFps > 0 && !limitFps30) {
+        outputArgs.push('-r', String(Math.round(sourceFps)));
+      }
     }
     
     // Build final command
