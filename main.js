@@ -501,9 +501,18 @@ ipcMain.handle('process-video', async (event, options) => {
     if (!createGif) {
       if (hwEncoder) {
         outputArgs.push('-c:v', hwEncoder);
-        if (hwEncoder === 'h264_nvenc') outputArgs.push('-preset', 'fast');
+        // Quality parameters per encoder — tuned to match libx264 CRF ~20 quality
+        if (hwEncoder === 'h264_nvenc') {
+          outputArgs.push('-preset', 'p4', '-rc', 'constqp', '-qp', '20');
+        } else if (hwEncoder === 'h264_amf') {
+          outputArgs.push('-quality', 'balanced', '-rc', 'cqp', '-qp_i', '20', '-qp_p', '20', '-qp_b', '20');
+        } else if (hwEncoder === 'h264_qsv') {
+          outputArgs.push('-preset', 'medium', '-global_quality', '20');
+        } else if (hwEncoder === 'h264_vaapi') {
+          outputArgs.push('-qp', '20');
+        }
       } else {
-        outputArgs.push('-c:v', 'libx264', '-preset', 'fast');
+        outputArgs.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '20');
       }
       outputArgs.push('-c:a', 'aac', '-b:a', '192k');
     }
