@@ -6,7 +6,7 @@ Made for small gaming video clips.
 
 [Usage Demo](https://pictshare.net/ovtjkb.mp4)
 
-![Video Demo](https://pictshare.net/l7oq2x.gif)
+https://github.com/user-attachments/assets/bb0d3ec2-8665-4c2b-9019-aa424ff73cf2
 
 
 ```bash
