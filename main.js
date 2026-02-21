@@ -143,9 +143,11 @@ function testEncoder(ffmpegPath, encoder) {
   return new Promise((resolve) => {
     const tmpOut = path.join(app.getPath('temp'), `_sc_test_${encoder}.mp4`);
     // Generate 1 frame of black video and encode with the candidate encoder
+    // NOTE: Use 256x256 — GPU encoders (AMF, NVENC, QSV) reject very small
+    //       resolutions (e.g. 64x64) and fail even when the hardware is fine.
     const args = [
       '-hide_banner', '-loglevel', 'error',
-      '-f', 'lavfi', '-i', 'color=c=black:s=64x64:d=0.04',
+      '-f', 'lavfi', '-i', 'color=c=black:s=256x256:d=0.1:rate=25',
       '-c:v', encoder,
       '-frames:v', '1',
       '-y', tmpOut

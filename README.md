@@ -1,12 +1,12 @@
-# Simple cutter
+# Simple cutter or DTA-Cutter
 
 A simple ffmpeg powered video cutter for Windows.
 
 Made for small gaming video clips.
 
-Usage tutorial: http://www.pictshare.net/7wapohkssd.mp4
+[Usage Demo](https://pictshare.net/ovtjkb.mp4)
 
-[![Video Tutorial](http://www.pictshare.net/7wapohkssd.mp4/preview)](http://www.pictshare.net/7wapohkssd.mp4)
+![Video Demo](https://pictshare.net/l7oq2x.gif)
 
 
 ```bash
