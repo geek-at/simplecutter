@@ -201,8 +201,8 @@ function loadVideo(filePath) {
       el.fps30Toggle.disabled = false;
     }
 
-    // Auto-add first segment (first 10s or full duration)
-    addSegment(0, Math.min(10, appState.videoDuration));
+    // Auto-add first segment covering the full video duration
+    addSegment(0, appState.videoDuration);
   };
 
   el.videoPlayer.ontimeupdate = () => {
@@ -262,10 +262,15 @@ function setupVideoControls() {
 function setupSegmentControls() {
   el.addSegmentBtn.addEventListener('click', () => {
     if (!appState.videoPath) return;
-    // Default new segment starts at current playback position
-    const cur = el.videoPlayer.currentTime || 0;
-    const end = Math.min(cur + 10, appState.videoDuration);
-    addSegment(cur, end, 1);
+    // If segments exist, start new segment at the end of the last one
+    let start;
+    if (appState.segments.length > 0) {
+      start = appState.segments[appState.segments.length - 1].endTime;
+    } else {
+      start = el.videoPlayer.currentTime || 0;
+    }
+    const end = Math.min(start + 10, appState.videoDuration);
+    addSegment(start, end, 1);
   });
 
   // "From Here" — sets start of last segment (or creates one) to current time
