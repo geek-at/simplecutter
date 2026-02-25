@@ -508,11 +508,17 @@ async function processVideo() {
     // Show a concise error — extract the last meaningful line from FFmpeg stderr
     let msg = String(err.message || err);
     const lines = msg.split('\n').filter(l => l.trim());
-    // Look for lines that describe the actual error (not just stream info)
-    const errorLine = lines.reverse().find(l =>
-      /error|invalid|failed|no such|cannot|unable|not found|unrecognized|does not/i.test(l)
+    // Look for lines that describe the actual error (skip version/banner lines)
+    const errorLine = lines.filter(l =>
+      !/^\s*(ffmpeg version|Copyright|built with|configuration:|lib|\s*$)/i.test(l)
+    ).reverse().find(l =>
+      /error|invalid|failed|no such|cannot|unable|not found|unrecognized|does not|match|missing|denied/i.test(l)
     );
-    el.processingStatus.textContent = `Error: ${errorLine || lines[0] || 'Processing failed'}`;
+    // Fallback: last non-banner line, or first line
+    const fallback = lines.filter(l =>
+      !/^\s*(ffmpeg version|Copyright|built with|configuration:|lib)/i.test(l)
+    ).pop();
+    el.processingStatus.textContent = `Error: ${errorLine || fallback || lines[lines.length - 1] || 'Processing failed'}`;
     setTimeout(() => el.processingModal.classList.remove('active'), 6000);
   }
 }

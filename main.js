@@ -271,14 +271,13 @@ function getVideoFps(filePath) {
   });
 }
 
-// Detect video rotation using ffprobe (0, 90, 180, 270)
-function getVideoRotation(filePath) {
+// Detect video rotation and audio presence using ffprobe
+function getVideoInfo(filePath) {
   return new Promise((resolve) => {
     const probePath = getFFprobePath();
     const args = [
       '-v', 'error',
-      '-select_streams', 'v:0',
-      '-show_entries', 'stream_tags=rotate:stream_side_data=rotation',
+      '-show_entries', 'stream=codec_type,r_frame_rate:stream_tags=rotate:stream_side_data=rotation',
       '-of', 'json',
       filePath
     ];
@@ -288,29 +287,36 @@ function getVideoRotation(filePath) {
     proc.on('close', () => {
       try {
         const data = JSON.parse(stdout);
-        const stream = (data.streams || [])[0];
-        // Check tags first (common in MP4 from phones)
-        if (stream?.tags?.rotate) {
-          const r = parseInt(stream.tags.rotate);
-          resolve(isFinite(r) ? ((r % 360) + 360) % 360 : 0);
-          return;
-        }
-        // Check side_data (display matrix rotation)
-        const sideData = stream?.side_data_list || [];
-        for (const sd of sideData) {
-          if (sd.rotation !== undefined) {
-            const r = Math.round(parseFloat(sd.rotation));
-            // side_data rotation is negative of the display rotation
-            resolve(isFinite(r) ? ((-r % 360) + 360) % 360 : 0);
-            return;
+        const streams = data.streams || [];
+        const videoStream = streams.find(s => s.codec_type === 'video');
+        const hasAudioStream = streams.some(s => s.codec_type === 'audio');
+
+        let rotation = 0;
+        if (videoStream) {
+          // Check tags first (common in MP4 from phones)
+          if (videoStream.tags?.rotate) {
+            const r = parseInt(videoStream.tags.rotate);
+            if (isFinite(r)) rotation = ((r % 360) + 360) % 360;
+          } else {
+            // Check side_data (display matrix rotation)
+            const sideData = videoStream.side_data_list || [];
+            for (const sd of sideData) {
+              if (sd.rotation !== undefined) {
+                const r = Math.round(parseFloat(sd.rotation));
+                // side_data rotation is negative of the display rotation
+                if (isFinite(r)) rotation = ((-r % 360) + 360) % 360;
+                break;
+              }
+            }
           }
         }
-        resolve(0);
+
+        resolve({ rotation, hasAudioStream });
       } catch (_) {
-        resolve(0);
+        resolve({ rotation: 0, hasAudioStream: true });
       }
     });
-    proc.on('error', () => resolve(0));
+    proc.on('error', () => resolve({ rotation: 0, hasAudioStream: true }));
   });
 }
 
@@ -487,13 +493,15 @@ ipcMain.handle('process-video', async (event, options) => {
   const { segments, outputPath, useHwAccel, createGif, gifOptions, halfResolution, limitFps30, sourceFps } = options;
   const ffmpegPath = getFFmpegPath();
 
-  // Detect rotation from the source video so we can apply it manually
+  // Detect rotation and audio presence from the source video
   const inputPath = segments.length > 0 ? segments[0].inputPath : null;
-  const rotation = inputPath ? await getVideoRotation(inputPath) : 0;
-  console.log('Detected video rotation:', rotation);
+  const videoInfo = inputPath ? await getVideoInfo(inputPath) : { rotation: 0, hasAudioStream: true };
+  const rotation = videoInfo.rotation;
+  console.log('Detected video rotation:', rotation, 'Has audio:', videoInfo.hasAudioStream);
   
   return new Promise((resolve, reject) => {
-    const hasAudio = !createGif;
+    // Only include audio if not GIF and the source actually has an audio stream
+    const hasAudio = !createGif && videoInfo.hasAudioStream;
 
     // Build filter complex for multiple segments
     let filterComplex = '';
@@ -610,7 +618,9 @@ ipcMain.handle('process-video', async (event, options) => {
       } else {
         outputArgs.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '20');
       }
-      outputArgs.push('-c:a', 'aac', '-b:a', '192k');
+      if (hasAudio) {
+        outputArgs.push('-c:a', 'aac', '-b:a', '192k');
+      }
 
       // Preserve source framerate — hardware encoders may default to 30/25 fps
       // when the framerate isn't explicitly set after filter_complex + concat
