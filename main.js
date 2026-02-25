@@ -271,6 +271,49 @@ function getVideoFps(filePath) {
   });
 }
 
+// Detect video rotation using ffprobe (0, 90, 180, 270)
+function getVideoRotation(filePath) {
+  return new Promise((resolve) => {
+    const probePath = getFFprobePath();
+    const args = [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream_tags=rotate:stream_side_data=rotation',
+      '-of', 'json',
+      filePath
+    ];
+    const proc = spawn(probePath, args, { timeout: 10000 });
+    let stdout = '';
+    proc.stdout.on('data', d => stdout += d.toString());
+    proc.on('close', () => {
+      try {
+        const data = JSON.parse(stdout);
+        const stream = (data.streams || [])[0];
+        // Check tags first (common in MP4 from phones)
+        if (stream?.tags?.rotate) {
+          const r = parseInt(stream.tags.rotate);
+          resolve(isFinite(r) ? ((r % 360) + 360) % 360 : 0);
+          return;
+        }
+        // Check side_data (display matrix rotation)
+        const sideData = stream?.side_data_list || [];
+        for (const sd of sideData) {
+          if (sd.rotation !== undefined) {
+            const r = Math.round(parseFloat(sd.rotation));
+            // side_data rotation is negative of the display rotation
+            resolve(isFinite(r) ? ((-r % 360) + 360) % 360 : 0);
+            return;
+          }
+        }
+        resolve(0);
+      } catch (_) {
+        resolve(0);
+      }
+    });
+    proc.on('error', () => resolve(0));
+  });
+}
+
 // Create the main window
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -443,6 +486,11 @@ ipcMain.handle('save-screenshot', async (event, opts) => {
 ipcMain.handle('process-video', async (event, options) => {
   const { segments, outputPath, useHwAccel, createGif, gifOptions, halfResolution, limitFps30, sourceFps } = options;
   const ffmpegPath = getFFmpegPath();
+
+  // Detect rotation from the source video so we can apply it manually
+  const inputPath = segments.length > 0 ? segments[0].inputPath : null;
+  const rotation = inputPath ? await getVideoRotation(inputPath) : 0;
+  console.log('Detected video rotation:', rotation);
   
   return new Promise((resolve, reject) => {
     const hasAudio = !createGif;
@@ -481,6 +529,15 @@ ipcMain.handle('process-video', async (event, options) => {
         videoFilter = trimFilter;
       }
       
+      // Apply rotation fix for portrait/rotated videos
+      if (rotation === 90) {
+        videoFilter += ',transpose=1';
+      } else if (rotation === 180) {
+        videoFilter += ',hflip,vflip';
+      } else if (rotation === 270) {
+        videoFilter += ',transpose=2';
+      }
+
       // Apply half-resolution scale if requested (not for GIF — GIF has its own scale)
       if (halfResolution && !createGif) {
         videoFilter += `,scale=iw/2:ih/2:flags=lanczos`;
@@ -568,6 +625,9 @@ ipcMain.handle('process-video', async (event, options) => {
 
     const args = [
       ...hwAccelArgs,
+      // Disable auto-rotation — we handle it manually in the filter chain
+      // to ensure correctness with hardware decoding
+      ...(rotation !== 0 ? ['-noautorotate'] : []),
       ...inputs,
       '-filter_complex', filterComplex,
       ...mapArgs,
