@@ -250,7 +250,7 @@ function getVideoFps(filePath) {
     const args = [
       '-v', 'error',
       '-select_streams', 'v:0',
-      '-show_entries', 'stream=r_frame_rate',
+      '-show_entries', 'stream=avg_frame_rate,r_frame_rate',
       '-of', 'csv=p=0',
       filePath
     ];
@@ -258,14 +258,27 @@ function getVideoFps(filePath) {
     let stdout = '';
     proc.stdout.on('data', d => stdout += d.toString());
     proc.on('close', () => {
-      // r_frame_rate comes as "num/den", e.g. "60/1" or "30000/1001"
-      const parts = stdout.trim().split('/');
-      if (parts.length === 2) {
-        const fps = parseInt(parts[0]) / parseInt(parts[1]);
-        resolve(isFinite(fps) ? fps : 0);
-      } else {
-        resolve(0);
-      }
+      // Prefer avg_frame_rate for VFR footage; fallback to r_frame_rate.
+      // Clamp to sane range to avoid pathological values (e.g. 45045 fps).
+      const parseRate = (rate) => {
+        const parts = String(rate || '').trim().split('/');
+        if (parts.length !== 2) return 0;
+        const n = Number(parts[0]);
+        const d = Number(parts[1]);
+        if (!isFinite(n) || !isFinite(d) || d === 0) return 0;
+        return n / d;
+      };
+
+      const lines = stdout
+        .split('\n')
+        .map(l => l.trim())
+        .filter(Boolean);
+
+      const avg = parseRate(lines[0]);
+      const r   = parseRate(lines[1] || lines[0]);
+      const fps = (avg > 0 ? avg : r);
+      if (isFinite(fps) && fps >= 1 && fps <= 240) resolve(fps);
+      else resolve(0);
     });
     proc.on('error', () => resolve(0));
   });
@@ -277,7 +290,7 @@ function getVideoInfo(filePath) {
     const probePath = getFFprobePath();
     const args = [
       '-v', 'error',
-      '-show_entries', 'stream=codec_type,r_frame_rate:stream_tags=rotate:stream_side_data=rotation',
+      '-show_entries', 'stream=codec_type,avg_frame_rate,r_frame_rate,bit_rate:stream_tags=rotate:stream_side_data=rotation:format=bit_rate',
       '-of', 'json',
       filePath
     ];
@@ -290,6 +303,39 @@ function getVideoInfo(filePath) {
         const streams = data.streams || [];
         const videoStream = streams.find(s => s.codec_type === 'video');
         const hasAudioStream = streams.some(s => s.codec_type === 'audio');
+
+        const parseRate = (rate) => {
+          const parts = String(rate || '').trim().split('/');
+          if (parts.length !== 2) return 0;
+          const n = Number(parts[0]);
+          const d = Number(parts[1]);
+          if (!isFinite(n) || !isFinite(d) || d === 0) return 0;
+          return n / d;
+        };
+
+        let fps = 0;
+        let videoBitrate = 0;
+        let audioBitrate = 0;
+        if (videoStream) {
+          const avg = parseRate(videoStream.avg_frame_rate);
+          const r = parseRate(videoStream.r_frame_rate);
+          const parsedFps = avg > 0 ? avg : r;
+          if (isFinite(parsedFps) && parsedFps >= 1 && parsedFps <= 240) {
+            fps = parsedFps;
+          }
+
+          videoBitrate = Number(videoStream.bit_rate) || 0;
+        }
+
+        const audioStream = streams.find(s => s.codec_type === 'audio');
+        if (audioStream) {
+          audioBitrate = Number(audioStream.bit_rate) || 0;
+        }
+
+        // Fallback to container bitrate when stream bitrate is unavailable
+        if (!videoBitrate && data.format?.bit_rate) {
+          videoBitrate = Number(data.format.bit_rate) || 0;
+        }
 
         let rotation = 0;
         if (videoStream) {
@@ -311,12 +357,12 @@ function getVideoInfo(filePath) {
           }
         }
 
-        resolve({ rotation, hasAudioStream });
+        resolve({ rotation, hasAudioStream, fps, videoBitrate, audioBitrate });
       } catch (_) {
-        resolve({ rotation: 0, hasAudioStream: true });
+        resolve({ rotation: 0, hasAudioStream: true, fps: 0, videoBitrate: 0, audioBitrate: 0 });
       }
     });
-    proc.on('error', () => resolve({ rotation: 0, hasAudioStream: true }));
+    proc.on('error', () => resolve({ rotation: 0, hasAudioStream: true, fps: 0, videoBitrate: 0, audioBitrate: 0 }));
   });
 }
 
@@ -495,9 +541,11 @@ ipcMain.handle('process-video', async (event, options) => {
 
   // Detect rotation and audio presence from the source video
   const inputPath = segments.length > 0 ? segments[0].inputPath : null;
-  const videoInfo = inputPath ? await getVideoInfo(inputPath) : { rotation: 0, hasAudioStream: true };
+  const videoInfo = inputPath ? await getVideoInfo(inputPath) : { rotation: 0, hasAudioStream: true, fps: 0, videoBitrate: 0, audioBitrate: 0 };
   const rotation = videoInfo.rotation;
-  console.log('Detected video rotation:', rotation, 'Has audio:', videoInfo.hasAudioStream);
+  const detectedFps = videoInfo.fps > 0 ? videoInfo.fps : sourceFps;
+  const safeFps = (isFinite(detectedFps) && detectedFps >= 1 && detectedFps <= 240) ? detectedFps : 0;
+  console.log('Detected video rotation:', rotation, 'Has audio:', videoInfo.hasAudioStream, 'FPS:', safeFps, 'Video bitrate:', videoInfo.videoBitrate, 'Audio bitrate:', videoInfo.audioBitrate);
   
   return new Promise((resolve, reject) => {
     // Only include audio if not GIF and the source actually has an audio stream
@@ -575,10 +623,8 @@ ipcMain.handle('process-video', async (event, options) => {
       }
     });
     
-    // Concatenation — video-only for GIF, video+audio for MP4
-    if (hasAudio) {
-      filterComplex += `${concatInputs}concat=n=${segments.length}:v=1:a=1[outv][outa]`;
-    } else {
+    // Concatenation
+    if (createGif) {
       // GIF: video-only concat, then apply GIF-specific filters
       const gifFps = gifOptions.fps || 15;
       const gifW   = gifOptions.width || 480;
@@ -586,6 +632,11 @@ ipcMain.handle('process-video', async (event, options) => {
       filterComplex += `[_gif]fps=${gifFps},scale=${gifW}:-1:flags=lanczos,split[s0][s1];`;
       filterComplex += `[s0]palettegen=max_colors=128:stats_mode=diff[p];`;
       filterComplex += `[s1][p]paletteuse=dither=bayer:bayer_scale=5[outv]`;
+    } else if (hasAudio) {
+      filterComplex += `${concatInputs}concat=n=${segments.length}:v=1:a=1[outv][outa]`;
+    } else {
+      // MP4 without audio stream: plain video-only concat
+      filterComplex += `${concatInputs}concat=n=${segments.length}:v=1:a=0[outv]`;
     }
     
     // Use the tested hardware encoder from GPU detection (if requested)
@@ -618,14 +669,27 @@ ipcMain.handle('process-video', async (event, options) => {
       } else {
         outputArgs.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '20');
       }
+
+      // Preserve source bitrate by default when available
+      if (videoInfo.videoBitrate > 0) {
+        const kbps = Math.max(100, Math.round(videoInfo.videoBitrate / 1000));
+        outputArgs.push('-b:v', `${kbps}k`);
+      }
+
       if (hasAudio) {
-        outputArgs.push('-c:a', 'aac', '-b:a', '192k');
+        outputArgs.push('-c:a', 'aac');
+        if (videoInfo.audioBitrate > 0) {
+          const audioKbps = Math.max(32, Math.round(videoInfo.audioBitrate / 1000));
+          outputArgs.push('-b:a', `${audioKbps}k`);
+        } else {
+          outputArgs.push('-b:a', '192k');
+        }
       }
 
       // Preserve source framerate — hardware encoders may default to 30/25 fps
       // when the framerate isn't explicitly set after filter_complex + concat
-      if (sourceFps > 0 && !limitFps30) {
-        outputArgs.push('-r', String(Math.round(sourceFps)));
+      if (safeFps > 0 && !limitFps30) {
+        outputArgs.push('-r', String(Number(safeFps.toFixed(3))));
       }
     }
     
