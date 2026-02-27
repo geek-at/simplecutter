@@ -21,6 +21,7 @@ function cacheDom() {
     videoControls:    document.getElementById('videoControls'),
     videoTimeline:    document.getElementById('videoTimeline'),
     timelineProgress: document.getElementById('timelineProgress'),
+    timelineSecondIndicator: document.getElementById('timelineSecondIndicator'),
     segmentMarkers:   document.getElementById('segmentMarkers'),
     segmentList:      document.getElementById('segmentList'),
     addSegmentBtn:    document.getElementById('addSegmentBtn'),
@@ -184,6 +185,7 @@ function loadVideo(filePath) {
   el.videoPlayer.onloadedmetadata = async () => {
     appState.videoDuration = el.videoPlayer.duration;
     el.duration.textContent = formatTime(appState.videoDuration);
+    updateTimelineSecondIndicator(el.videoPlayer.currentTime, appState.videoDuration);
 
     // Detect FPS and disable 30fps toggle if already <= 30
     try {
@@ -209,6 +211,7 @@ function loadVideo(filePath) {
     const cur = el.videoPlayer.currentTime;
     const dur = el.videoPlayer.duration;
     el.currentTime.textContent = formatTime(cur);
+    updateTimelineSecondIndicator(cur, dur);
     if (dur > 0) {
       el.timelineProgress.style.width = `${(cur / dur) * 100}%`;
     }
@@ -256,6 +259,23 @@ function setupVideoControls() {
     const pos = (e.clientX - rect.left) / rect.width;
     el.videoPlayer.currentTime = pos * appState.videoDuration;
   });
+}
+
+function updateTimelineSecondIndicator(currentTime, duration) {
+  if (!el.timelineSecondIndicator) return;
+
+  const cur = Number.isFinite(currentTime) ? currentTime : 0;
+  const dur = Number.isFinite(duration) ? duration : 0;
+  const clampedCur = Math.max(0, Math.min(cur, dur > 0 ? dur : cur));
+
+  el.timelineSecondIndicator.textContent = clampedCur.toFixed(2);
+
+  let percent = 0;
+  if (dur > 0) {
+    percent = (clampedCur / dur) * 100;
+  }
+  percent = Math.max(0, Math.min(percent, 100));
+  el.timelineSecondIndicator.style.left = `${percent}%`;
 }
 
 // ──────────── Segment Management ────────────
