@@ -650,6 +650,18 @@
       flex-shrink: 0;
     }
 
+    .footer-link {
+      color: inherit;
+      text-decoration: none;
+      cursor: pointer;
+      transition: color 0.15s;
+    }
+
+    .footer-link:hover {
+      color: var(--text-primary);
+      text-decoration: underline;
+    }
+
     /* ======== Scrollbar ======== */
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -852,7 +864,7 @@
 
     <!-- Footer -->
     <footer class="app-footer">
-      <span id="appVersion">SimpleCutter v2.0.0</span>
+      <a id="appVersion" class="footer-link" href="#" title="Open GitHub project page">SimpleCutter v2.0.0</a>
       <span>Powered by FFmpeg</span>
     </footer>
   </div>
@@ -886,6 +898,12 @@
     });
     document.getElementById('btnClose').addEventListener('click', () => {
       _ipc.send('win-close');
+    });
+
+    const appVersionEl = document.getElementById('appVersion');
+    appVersionEl.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.electronAPI.openExternalUrl('https://github.com/geek-at/simplecutter');
     });
 
     // Dev tools shortcut (F12) and reload (F5)

@@ -425,6 +425,12 @@ ipcMain.handle('get-app-version', () => {
   return app.getVersion();
 });
 
+ipcMain.handle('open-external-url', async (_event, url) => {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return false;
+  await shell.openExternal(url);
+  return true;
+});
+
 ipcMain.handle('get-video-fps', async (event, filePath) => {
   return getVideoFps(filePath);
 });
