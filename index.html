@@ -887,7 +887,7 @@
       <a id="appVersion" class="footer-link" href="#" title="Open GitHub project page">SimpleCutter v2.0.0</a>
       <span class="footer-center">
         made with love for the
-        <a class="footer-link dta-link" href="https://www.drinkingteam.at/" target="_blank" rel="noopener noreferrer">
+        <a id="drinkingTeamLink" class="footer-link dta-link" href="#" title="Open Drinking Team Austria website">
           <span class="dta-red">Drinking</span>
           <span class="dta-white">Team</span>
           <span class="dta-red">Austria</span>
@@ -932,6 +932,12 @@
     appVersionEl.addEventListener('click', (e) => {
       e.preventDefault();
       window.electronAPI.openExternalUrl('https://github.com/geek-at/simplecutter');
+    });
+
+    const drinkingTeamLinkEl = document.getElementById('drinkingTeamLink');
+    drinkingTeamLinkEl.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.electronAPI.openExternalUrl('https://www.drinkingteam.at/');
     });
 
     // Dev tools shortcut (F12) and reload (F5)
