@@ -643,8 +643,9 @@
       padding: 8px 16px;
       background: var(--bg-card);
       border-top: 1px solid var(--border);
-      display: flex;
-      justify-content: space-between;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
       font-size: 11px;
       color: var(--text-secondary);
       flex-shrink: 0;
@@ -660,6 +661,25 @@
     .footer-link:hover {
       color: var(--text-primary);
       text-decoration: underline;
+    }
+
+    .footer-center {
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .footer-right {
+      text-align: right;
+    }
+
+    .dta-link .dta-red {
+      color: #dc2626;
+      font-weight: 700;
+    }
+
+    .dta-link .dta-white {
+      color: #ffffff;
+      font-weight: 700;
     }
 
     /* ======== Scrollbar ======== */
@@ -865,7 +885,15 @@
     <!-- Footer -->
     <footer class="app-footer">
       <a id="appVersion" class="footer-link" href="#" title="Open GitHub project page">SimpleCutter v2.0.0</a>
-      <span>Powered by FFmpeg</span>
+      <span class="footer-center">
+        made with love for the
+        <a class="footer-link dta-link" href="https://www.drinkingteam.at/" target="_blank" rel="noopener noreferrer">
+          <span class="dta-red">Drinking</span>
+          <span class="dta-white">Team</span>
+          <span class="dta-red">Austria</span>
+        </a>
+      </span>
+      <span class="footer-right">Powered by FFmpeg</span>
     </footer>
   </div>
 
