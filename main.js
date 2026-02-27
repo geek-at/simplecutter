@@ -642,14 +642,9 @@ ipcMain.handle('process-video', async (event, options) => {
     // Use the tested hardware encoder from GPU detection (if requested)
     const hwEncoder = (!createGif && useHwAccel) ? gpuInfo.hwEncoder : null;
     
-    // Build hardware acceleration input args
-    let hwAccelArgs = [];
-    if (hwEncoder) {
-      if (hwEncoder === 'h264_nvenc')       hwAccelArgs = ['-hwaccel', 'cuda', '-hwaccel_device', '0'];
-      else if (hwEncoder === 'h264_amf')    hwAccelArgs = ['-hwaccel', 'dxva2'];
-      else if (hwEncoder === 'h264_vaapi')  hwAccelArgs = ['-hwaccel', 'vaapi'];
-      else if (hwEncoder === 'h264_qsv')    hwAccelArgs = ['-hwaccel', 'qsv'];
-    }
+    // NOTE: Intentionally avoid hardware decoding (-hwaccel input args).
+    // We keep software decode + software filters for stability across
+    // trim/setpts/concat pipelines, and only use hardware for encoding.
     
     // Build output args
     const outputArgs = [];
@@ -698,7 +693,6 @@ ipcMain.handle('process-video', async (event, options) => {
     if (hasAudio) mapArgs.push('-map', '[outa]');
 
     const args = [
-      ...hwAccelArgs,
       // Disable auto-rotation — we handle it manually in the filter chain
       // to ensure correctness with hardware decoding
       ...(rotation !== 0 ? ['-noautorotate'] : []),
