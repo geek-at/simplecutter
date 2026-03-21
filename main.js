@@ -290,7 +290,7 @@ function getVideoInfo(filePath) {
     const probePath = getFFprobePath();
     const args = [
       '-v', 'error',
-      '-show_entries', 'stream=codec_type,avg_frame_rate,r_frame_rate,bit_rate:stream_tags=rotate:stream_side_data=rotation:format=bit_rate',
+      '-show_entries', 'stream=codec_type,avg_frame_rate,r_frame_rate,bit_rate,width,height:stream_tags=rotate:stream_side_data=rotation:format=bit_rate',
       '-of', 'json',
       filePath
     ];
@@ -357,12 +357,14 @@ function getVideoInfo(filePath) {
           }
         }
 
-        resolve({ rotation, hasAudioStream, fps, videoBitrate, audioBitrate });
+        const width  = Number(videoStream?.width)  || 0;
+        const height = Number(videoStream?.height) || 0;
+        resolve({ rotation, hasAudioStream, fps, videoBitrate, audioBitrate, width, height });
       } catch (_) {
-        resolve({ rotation: 0, hasAudioStream: true, fps: 0, videoBitrate: 0, audioBitrate: 0 });
+        resolve({ rotation: 0, hasAudioStream: true, fps: 0, videoBitrate: 0, audioBitrate: 0, width: 0, height: 0 });
       }
     });
-    proc.on('error', () => resolve({ rotation: 0, hasAudioStream: true, fps: 0, videoBitrate: 0, audioBitrate: 0 }));
+    proc.on('error', () => resolve({ rotation: 0, hasAudioStream: true, fps: 0, videoBitrate: 0, audioBitrate: 0, width: 0, height: 0 }));
   });
 }
 
@@ -552,7 +554,16 @@ ipcMain.handle('process-video', async (event, options) => {
   const detectedFps = videoInfo.fps > 0 ? videoInfo.fps : sourceFps;
   const safeFps = (isFinite(detectedFps) && detectedFps >= 1 && detectedFps <= 240) ? detectedFps : 0;
   console.log('Detected video rotation:', rotation, 'Has audio:', videoInfo.hasAudioStream, 'FPS:', safeFps, 'Video bitrate:', videoInfo.videoBitrate, 'Audio bitrate:', videoInfo.audioBitrate);
-  
+
+  // Effective dimensions after rotation (90/270 swaps width/height)
+  const rawW = videoInfo.width  || 0;
+  const rawH = videoInfo.height || 0;
+  const effectiveW = (rotation === 90 || rotation === 270) ? rawH : rawW;
+  const effectiveH = (rotation === 90 || rotation === 270) ? rawW : rawH;
+  // Force even — h264 requires dimensions divisible by 2
+  const zoomScaleW = effectiveW > 0 ? Math.round(effectiveW / 2) * 2 : 0;
+  const zoomScaleH = effectiveH > 0 ? Math.round(effectiveH / 2) * 2 : 0;
+
   return new Promise((resolve, reject) => {
     // Only include audio if not GIF and the source actually has an audio stream
     const hasAudio = !createGif && videoInfo.hasAudioStream;
@@ -598,6 +609,17 @@ ipcMain.handle('process-video', async (event, options) => {
         videoFilter += ',hflip,vflip';
       } else if (rotation === 270) {
         videoFilter += ',transpose=2';
+      }
+
+      // Apply zoom: crop the selected region then scale back to exact original dimensions
+      if (seg.zoom && zoomScaleW > 0 && zoomScaleH > 0) {
+        const { x, y, w, h } = seg.zoom;
+        const xf = Math.max(0, x).toFixed(6);
+        const yf = Math.max(0, y).toFixed(6);
+        const wf = Math.min(1 - parseFloat(xf), w).toFixed(6);
+        const hf = Math.min(1 - parseFloat(yf), h).toFixed(6);
+        // Scale to exact pixel dimensions to guarantee concat compatibility; reset SAR to 1:1
+        videoFilter += `,crop=iw*${wf}:ih*${hf}:iw*${xf}:ih*${yf},scale=${zoomScaleW}:${zoomScaleH}:flags=lanczos,setsar=1`;
       }
 
       // Apply half-resolution scale if requested (not for GIF — GIF has its own scale)

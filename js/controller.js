@@ -10,6 +10,15 @@ const appState = {
   gpuInfo: null
 };
 
+// ──────────── Zoom State ────────────
+const zoomState = {
+  activeSegId: null,
+  selecting: false,
+  startX: 0,
+  startY: 0,
+  pendingRect: null
+};
+
 // ──────────── DOM refs (built after DOMContentLoaded) ────────────
 let el = {};
 
@@ -49,7 +58,13 @@ function cacheDom() {
     appVersion:       document.getElementById('appVersion'),
     processingModal:  document.getElementById('processingModal'),
     processingStatus: document.getElementById('processingStatus'),
-    progressBar:      document.getElementById('progressBar')
+    progressBar:      document.getElementById('progressBar'),
+    zoomOverlay:      document.getElementById('zoomOverlay'),
+    zoomCropBox:      document.getElementById('zoomCropBox'),
+    zoomHint:         document.getElementById('zoomHint'),
+    zoomToolbar:      document.getElementById('zoomToolbar'),
+    zoomCancelBtn:    document.getElementById('zoomCancelBtn'),
+    zoomConfirmBtn:   document.getElementById('zoomConfirmBtn')
   };
 }
 
@@ -78,6 +93,7 @@ async function init() {
   setupVideoControls();
   setupSegmentControls();
   setupOutputOptions();
+  setupZoomOverlay();
 }
 
 // ──────────── GPU Status ────────────
@@ -377,7 +393,8 @@ function addSegment(startTime, endTime, speed = 1) {
     endTime,
     speed,
     muted: false,
-    hasAudio: true
+    hasAudio: true,
+    zoom: null
   });
   renderSegments();
   updateProcessButton();
@@ -445,6 +462,20 @@ function renderSegments() {
           Mute
         </label>
       </div>
+      <div class="segment-zoom-row">
+        ${seg.zoom
+          ? `<div class="zoom-badge">
+               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+               Zoom&thinsp;${Math.round(seg.zoom.w * 100)}&thinsp;&times;&thinsp;${Math.round(seg.zoom.h * 100)}%
+             </div>
+             <button class="zoom-badge-edit" onclick="openZoomOverlay(${seg.id})">edit</button>
+             <button class="zoom-badge-clear" onclick="clearSegmentZoom(${seg.id})" title="Remove zoom">&times;</button>`
+          : `<button class="btn-zoom" onclick="openZoomOverlay(${seg.id})" title="Draw a region to zoom into for this segment">
+               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+               Set Zoom
+             </button>`
+        }
+      </div>
     </div>
   `).join('');
 
@@ -496,7 +527,8 @@ async function processVideo() {
     endTime:   s.endTime,
     speed:     s.speed,
     muted:     s.muted || false,
-    hasAudio:  !isGif
+    hasAudio:  !isGif,
+    zoom:      s.zoom || null
   }));
 
   const useHW = el.hwEncodeToggle.checked && !el.hwEncodeToggle.disabled;
@@ -558,9 +590,151 @@ function formatTime(sec) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+// ──────────── Zoom Overlay ────────────
+function setupZoomOverlay() {
+  const overlay = el.zoomOverlay;
+
+  overlay.addEventListener('mousedown', (e) => {
+    if (e.target.closest('#zoomToolbar')) return;
+    e.preventDefault();
+    const rect = overlay.getBoundingClientRect();
+    zoomState.selecting = true;
+    zoomState.startX = e.clientX - rect.left;
+    zoomState.startY = e.clientY - rect.top;
+    el.zoomCropBox.style.display = 'none';
+    el.zoomToolbar.classList.remove('visible');
+    el.zoomHint.style.display = 'none';
+  });
+
+  overlay.addEventListener('mousemove', (e) => {
+    if (!zoomState.selecting) return;
+    const rect = overlay.getBoundingClientRect();
+    const curX = e.clientX - rect.left;
+    const curY = e.clientY - rect.top;
+    applyZoomCropBox(normalizeRect(zoomState.startX, zoomState.startY, curX, curY));
+  });
+
+  overlay.addEventListener('mouseup', (e) => {
+    if (!zoomState.selecting) return;
+    zoomState.selecting = false;
+    const rect = overlay.getBoundingClientRect();
+    const curX = e.clientX - rect.left;
+    const curY = e.clientY - rect.top;
+    const box = normalizeRect(zoomState.startX, zoomState.startY, curX, curY);
+
+    if (box.width < 8 || box.height < 8) {
+      el.zoomCropBox.style.display = 'none';
+      el.zoomHint.style.display = 'block';
+      return;
+    }
+
+    applyZoomCropBox(box);
+
+    const ow = rect.width;
+    const oh = rect.height;
+    let px = box.left / ow;
+    let py = box.top / oh;
+    let pw = box.width / ow;
+    let ph = box.height / oh;
+    // Clamp to [0,1]
+    px = Math.max(0, Math.min(px, 1));
+    py = Math.max(0, Math.min(py, 1));
+    pw = Math.min(pw, 1 - px);
+    ph = Math.min(ph, 1 - py);
+
+    zoomState.pendingRect = { x: px, y: py, w: pw, h: ph };
+    el.zoomToolbar.classList.add('visible');
+  });
+
+  el.zoomCancelBtn.addEventListener('click', closeZoomOverlay);
+
+  el.zoomConfirmBtn.addEventListener('click', () => {
+    if (zoomState.pendingRect && zoomState.activeSegId != null) {
+      const seg = appState.segments.find(s => s.id === zoomState.activeSegId);
+      if (seg) {
+        seg.zoom = { ...zoomState.pendingRect };
+        renderSegments();
+        updateProcessButton();
+      }
+    }
+    closeZoomOverlay();
+  });
+}
+
+function normalizeRect(x1, y1, x2, y2) {
+  return {
+    left:   Math.min(x1, x2),
+    top:    Math.min(y1, y2),
+    width:  Math.abs(x2 - x1),
+    height: Math.abs(y2 - y1)
+  };
+}
+
+function applyZoomCropBox(box) {
+  const cb = el.zoomCropBox;
+  cb.style.display = 'block';
+  cb.style.left   = `${box.left}px`;
+  cb.style.top    = `${box.top}px`;
+  cb.style.width  = `${box.width}px`;
+  cb.style.height = `${box.height}px`;
+}
+
+function openZoomOverlay(segId) {
+  if (!appState.videoPath) return;
+
+  // Size the overlay to cover exactly the rendered video area
+  const dropzoneRect = el.videoDropzone.getBoundingClientRect();
+  const videoRect    = el.videoPlayer.getBoundingClientRect();
+  el.zoomOverlay.style.left   = `${videoRect.left - dropzoneRect.left}px`;
+  el.zoomOverlay.style.top    = `${videoRect.top  - dropzoneRect.top}px`;
+  el.zoomOverlay.style.width  = `${videoRect.width}px`;
+  el.zoomOverlay.style.height = `${videoRect.height}px`;
+
+  zoomState.activeSegId = segId;
+  zoomState.selecting   = false;
+  zoomState.pendingRect = null;
+
+  el.zoomCropBox.style.display = 'none';
+  el.zoomToolbar.classList.remove('visible');
+  el.zoomHint.style.display = 'block';
+  el.zoomOverlay.classList.add('active');
+
+  // Pre-draw existing zoom region if any
+  const seg = appState.segments.find(s => s.id === segId);
+  if (seg && seg.zoom) {
+    const ow = videoRect.width;
+    const oh = videoRect.height;
+    applyZoomCropBox({
+      left:   seg.zoom.x * ow,
+      top:    seg.zoom.y * oh,
+      width:  seg.zoom.w * ow,
+      height: seg.zoom.h * oh
+    });
+    zoomState.pendingRect = { ...seg.zoom };
+    el.zoomHint.style.display = 'none';
+    el.zoomToolbar.classList.add('visible');
+  }
+}
+
+function closeZoomOverlay() {
+  el.zoomOverlay.classList.remove('active');
+  zoomState.activeSegId = null;
+  zoomState.pendingRect = null;
+}
+
+function clearSegmentZoom(segId) {
+  const seg = appState.segments.find(s => s.id === segId);
+  if (seg) {
+    seg.zoom = null;
+    renderSegments();
+  }
+}
+
 // Expose to inline handlers
 window.removeSegment = removeSegment;
 window.updateSegment = updateSegment;
+window.openZoomOverlay = openZoomOverlay;
+window.clearSegmentZoom = clearSegmentZoom;
 
 // Boot
 document.addEventListener('DOMContentLoaded', init);

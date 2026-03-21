@@ -682,6 +682,162 @@
       font-weight: 700;
     }
 
+    /* ======== Zoom Overlay ======== */
+    .zoom-overlay {
+      position: absolute;
+      z-index: 20;
+      cursor: crosshair;
+      display: none;
+      overflow: hidden;
+      -webkit-app-region: no-drag;
+    }
+
+    .zoom-overlay.active { display: block; }
+
+    .zoom-crop-box {
+      position: absolute;
+      border: 2px solid var(--primary);
+      box-shadow: 0 0 0 9999px rgba(0,0,0,0.55);
+      pointer-events: none;
+      display: none;
+    }
+
+    /* Corner handles */
+    .zoom-handle {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-color: #fff;
+      border-style: solid;
+      border-width: 0;
+    }
+    .zoom-handle-tl { top: -2px; left: -2px; border-top-width: 3px; border-left-width: 3px; }
+    .zoom-handle-tr { top: -2px; right: -2px; border-top-width: 3px; border-right-width: 3px; }
+    .zoom-handle-bl { bottom: -2px; left: -2px; border-bottom-width: 3px; border-left-width: 3px; }
+    .zoom-handle-br { bottom: -2px; right: -2px; border-bottom-width: 3px; border-right-width: 3px; }
+
+    /* Rule-of-thirds grid */
+    .zoom-rof-v {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 1px;
+      background: rgba(255,255,255,0.2);
+    }
+    .zoom-rof-h {
+      position: absolute;
+      left: 0; right: 0;
+      height: 1px;
+      background: rgba(255,255,255,0.2);
+    }
+
+    .zoom-hint {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15,23,42,0.88);
+      color: #e2e8f0;
+      padding: 7px 18px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+      border: 1px solid var(--border);
+      pointer-events: none;
+      backdrop-filter: blur(4px);
+    }
+
+    .zoom-toolbar {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: none;
+      gap: 8px;
+      align-items: center;
+    }
+    .zoom-toolbar.visible { display: flex; }
+
+    .zoom-toolbar-btn {
+      padding: 8px 22px;
+      border-radius: 8px;
+      border: none;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .zoom-toolbar-btn:hover { transform: translateY(-1px); }
+    .zoom-toolbar-btn.confirm { background: var(--primary); color: #fff; }
+    .zoom-toolbar-btn.confirm:hover { background: var(--primary-hover); }
+    .zoom-toolbar-btn.cancel { background: rgba(15,23,42,0.85); color: var(--text-primary); border: 1px solid var(--border); }
+    .zoom-toolbar-btn.cancel:hover { background: var(--bg-card); }
+
+    /* Zoom row inside each segment card */
+    .segment-zoom-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(51,65,85,0.6);
+    }
+
+    .btn-zoom {
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-dark);
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .btn-zoom:hover { border-color: var(--primary); color: var(--primary); background: rgba(99,102,241,0.08); }
+
+    .zoom-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(99,102,241,0.14);
+      border: 1px solid rgba(99,102,241,0.35);
+      border-radius: 6px;
+      padding: 3px 9px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--primary);
+    }
+
+    .zoom-badge-edit {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 11px;
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .zoom-badge-edit:hover { color: var(--text-primary); }
+
+    .zoom-badge-clear {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 0;
+      font-size: 16px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      margin-left: 1px;
+    }
+    .zoom-badge-clear:hover { color: var(--danger); }
+
     /* ======== Scrollbar ======== */
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -752,6 +908,25 @@
               <p class="dropzone-subtext">or click to browse files</p>
             </div>
             <video id="videoPlayer" style="display:none;" controls></video>
+
+            <!-- Zoom Selection Overlay -->
+            <div class="zoom-overlay" id="zoomOverlay">
+              <div class="zoom-crop-box" id="zoomCropBox">
+                <div class="zoom-handle zoom-handle-tl"></div>
+                <div class="zoom-handle zoom-handle-tr"></div>
+                <div class="zoom-handle zoom-handle-bl"></div>
+                <div class="zoom-handle zoom-handle-br"></div>
+                <div class="zoom-rof-v" style="left:33.33%"></div>
+                <div class="zoom-rof-v" style="left:66.66%"></div>
+                <div class="zoom-rof-h" style="top:33.33%"></div>
+                <div class="zoom-rof-h" style="top:66.66%"></div>
+              </div>
+              <div class="zoom-hint" id="zoomHint">Drag to select the region to zoom into</div>
+              <div class="zoom-toolbar" id="zoomToolbar">
+                <button class="zoom-toolbar-btn cancel" id="zoomCancelBtn">Cancel</button>
+                <button class="zoom-toolbar-btn confirm" id="zoomConfirmBtn">&#10003;&thinsp;Apply Zoom</button>
+              </div>
+            </div>
           </div>
         </div>
 
