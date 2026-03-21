@@ -510,7 +510,7 @@ ipcMain.handle('show-in-folder', async (event, filePath) => {
 
 // Save a screenshot (PNG frame from video)
 ipcMain.handle('save-screenshot', async (event, opts) => {
-  const { videoPath, timestamp } = opts;
+  const { videoPath, timestamp, zoom } = opts;
   const ffmpegPath = getFFmpegPath();
 
   // Build filename: first 20 chars of video name + timestamp
@@ -521,11 +521,23 @@ ipcMain.handle('save-screenshot', async (event, opts) => {
   const outName = `${videoName}_${ts}.png`;
   const outPath = path.join(path.dirname(videoPath), outName);
 
+  // Build optional zoom filter (PNG has no even-dimension requirement so expressions work fine)
+  const vfArgs = [];
+  if (zoom) {
+    const { x, y, w, h } = zoom;
+    const xf = Math.max(0, x).toFixed(6);
+    const yf = Math.max(0, y).toFixed(6);
+    const wf = Math.min(1 - parseFloat(xf), w).toFixed(6);
+    const hf = Math.min(1 - parseFloat(yf), h).toFixed(6);
+    vfArgs.push('-vf', `crop=iw*${wf}:ih*${hf}:iw*${xf}:ih*${yf},scale=iw/${wf}:ih/${hf}:flags=lanczos`);
+  }
+
   return new Promise((resolve, reject) => {
     const args = [
       '-hide_banner', '-loglevel', 'error',
       '-ss', String(timestamp),
       '-i', videoPath,
+      ...vfArgs,
       '-frames:v', '1',
       '-y', outPath
     ];

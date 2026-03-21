@@ -369,10 +369,15 @@ async function takeScreenshot() {
   const origText = el.btnScreenshot.innerHTML;
   el.btnScreenshot.disabled = true;
 
+  // Find the segment whose range contains the current position and use its zoom
+  const activeSeg = appState.segments.find(s => timestamp >= s.startTime && timestamp <= s.endTime);
+  const zoom = activeSeg?.zoom || null;
+
   try {
     const result = await window.electronAPI.saveScreenshot({
       videoPath: appState.videoPath,
-      timestamp
+      timestamp,
+      zoom
     });
     // Flash green feedback
     el.btnScreenshot.innerHTML = '&#10003; Saved!';
