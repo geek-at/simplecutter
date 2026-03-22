@@ -19,6 +19,10 @@ const zoomState = {
   pendingRect: null
 };
 
+// ──────────── Render Queue State ────────────
+const renderQueue = [];
+let queueRunning = false;
+
 // ──────────── DOM refs (built after DOMContentLoaded) ────────────
 let el = {};
 
@@ -56,9 +60,7 @@ function cacheDom() {
     gpuDot:           document.getElementById('gpuDot'),
     gpuStatusText:    document.getElementById('gpuStatusText'),
     appVersion:       document.getElementById('appVersion'),
-    processingModal:  document.getElementById('processingModal'),
-    processingStatus: document.getElementById('processingStatus'),
-    progressBar:      document.getElementById('progressBar'),
+    queueStatus:      document.getElementById('queueStatus'),
     zoomOverlay:      document.getElementById('zoomOverlay'),
     zoomCropBox:      document.getElementById('zoomCropBox'),
     zoomHint:         document.getElementById('zoomHint'),
@@ -94,6 +96,19 @@ async function init() {
   setupSegmentControls();
   setupOutputOptions();
   setupZoomOverlay();
+
+  // Live progress updates for the active render job
+  window.electronAPI.onFFmpegProgress((data) => {
+    const job = renderQueue.find(j => j.status === 'rendering');
+    if (!job || !data.currentTime) return;
+    const totalDuration = job.params.segments.reduce(
+      (sum, s) => sum + (s.endTime - s.startTime) / (s.speed || 1), 0
+    );
+    if (totalDuration > 0) {
+      job.progress = Math.min(99, Math.round((data.currentTime / totalDuration) * 100));
+      updateQueueStatus();
+    }
+  });
 }
 
 // ──────────── GPU Status ────────────
@@ -503,28 +518,18 @@ function setupOutputOptions() {
   });
 }
 
-// ──────────── Process Video ────────────
+// ──────────── Process Video (enqueue) ────────────
 async function processVideo() {
   if (appState.segments.length === 0 || !appState.videoPath) return;
 
-  el.processingModal.classList.add('active');
-  el.processingStatus.textContent = 'Preparing...';
-  el.progressBar.style.width = '0%';
-
   const isGif = el.createGifToggle.checked;
-  const sourceDir = appState.videoPath ? appState.videoPath.replace(/[\\/][^\\/]+$/, '') : '';
+  const sourceDir = appState.videoPath.replace(/[\\/][^\\/]+$/, '');
   const outputPath = await window.electronAPI.selectOutputDir({ isGif, sourceDir });
-
-  if (!outputPath) {
-    el.processingModal.classList.remove('active');
-    return;
-  }
+  if (!outputPath) return;
 
   let finalPath = outputPath;
   if (isGif && !outputPath.endsWith('.gif'))  finalPath += '.gif';
   else if (!isGif && !outputPath.endsWith('.mp4')) finalPath += '.mp4';
-
-  el.processingStatus.textContent = 'Processing video segments...';
 
   const segments = appState.segments.map(s => ({
     inputPath: appState.videoPath,
@@ -537,46 +542,91 @@ async function processVideo() {
   }));
 
   const useHW = el.hwEncodeToggle.checked && !el.hwEncodeToggle.disabled;
-  const halfRes = el.halfResToggle.checked;
-  const limitFps30 = el.fps30Toggle.checked;
 
-  try {
-    await window.electronAPI.processVideo({
+  enqueueRender({
+    status: 'pending',
+    outputPath: finalPath,
+    label: finalPath.split(/[\\/]/).pop(),
+    progress: null,
+    params: {
       segments,
       outputPath: finalPath,
       useHwAccel: useHW,
-      halfResolution: halfRes,
-      limitFps30,
-      sourceFps: appState.videoFps || 0,
-      createGif: isGif,
+      halfResolution: el.halfResToggle.checked,
+      limitFps30:     el.fps30Toggle.checked,
+      sourceFps:      appState.videoFps || 0,
+      createGif:      isGif,
       gifOptions: {
         width: parseInt(el.gifWidth.value) || 480,
-        fps:   parseInt(el.gifFps.value) || 15
+        fps:   parseInt(el.gifFps.value)   || 15
       }
-    });
+    }
+  });
+}
 
-    el.processingStatus.textContent = 'Done!';
-    el.progressBar.style.width = '100%';
-    setTimeout(() => el.processingModal.classList.remove('active'), 1500);
-    // Reveal in file explorer
-    window.electronAPI.showInFolder(finalPath);
+// ──────────── Render Queue ────────────
+function enqueueRender(job) {
+  renderQueue.push(job);
+  updateQueueStatus();
+  if (!queueRunning) runNextQueueJob();
+}
+
+async function runNextQueueJob() {
+  const job = renderQueue.find(j => j.status === 'pending');
+  if (!job) {
+    queueRunning = false;
+    updateQueueStatus();
+    return;
+  }
+
+  queueRunning = true;
+  job.status = 'rendering';
+  job.progress = null;
+  updateQueueStatus();
+
+  try {
+    await window.electronAPI.processVideo(job.params);
+    job.status = 'done';
+    window.electronAPI.showInFolder(job.outputPath);
   } catch (err) {
-    console.error('Processing error:', err);
-    // Show a concise error — extract the last meaningful line from FFmpeg stderr
-    let msg = String(err.message || err);
-    const lines = msg.split('\n').filter(l => l.trim());
-    // Look for lines that describe the actual error (skip version/banner lines)
-    const errorLine = lines.filter(l =>
-      !/^\s*(ffmpeg version|Copyright|built with|configuration:|lib|\s*$)/i.test(l)
-    ).reverse().find(l =>
-      /error|invalid|failed|no such|cannot|unable|not found|unrecognized|does not|match|missing|denied/i.test(l)
-    );
-    // Fallback: last non-banner line, or first line
-    const fallback = lines.filter(l =>
-      !/^\s*(ffmpeg version|Copyright|built with|configuration:|lib)/i.test(l)
-    ).pop();
-    el.processingStatus.textContent = `Error: ${errorLine || fallback || lines[lines.length - 1] || 'Processing failed'}`;
-    setTimeout(() => el.processingModal.classList.remove('active'), 6000);
+    job.status = 'error';
+    console.error('Render job failed:', err);
+  }
+
+  updateQueueStatus();
+
+  // Remove finished job after a short pause, then pick up the next one
+  const delay = job.status === 'error' ? 5000 : 2000;
+  setTimeout(() => {
+    const idx = renderQueue.indexOf(job);
+    if (idx !== -1) renderQueue.splice(idx, 1);
+    updateQueueStatus();
+    runNextQueueJob();
+  }, delay);
+}
+
+function updateQueueStatus() {
+  const el_q = el.queueStatus;
+  if (!el_q) return;
+
+  const rendering = renderQueue.find(j => j.status === 'rendering');
+  const pending   = renderQueue.filter(j => j.status === 'pending');
+  const errored   = renderQueue.find(j => j.status === 'error');
+
+  if (rendering) {
+    const queuedText = pending.length > 0 ? ` · ${pending.length} queued` : '';
+    const pctText    = rendering.progress != null ? ` · ${rendering.progress}%` : '';
+    el_q.innerHTML   = `<span class="queue-spinner"></span>Rendering${queuedText}${pctText}`;
+    el_q.className   = 'footer-right queue-active';
+  } else if (errored) {
+    el_q.innerHTML = '&#9888; Render failed';
+    el_q.className = 'footer-right queue-error';
+  } else if (renderQueue.some(j => j.status === 'done')) {
+    el_q.innerHTML = '&#10003; Done';
+    el_q.className = 'footer-right queue-done';
+  } else {
+    el_q.innerHTML = 'Powered by FFmpeg';
+    el_q.className = 'footer-right';
   }
 }
 
@@ -740,6 +790,9 @@ window.removeSegment = removeSegment;
 window.updateSegment = updateSegment;
 window.openZoomOverlay = openZoomOverlay;
 window.clearSegmentZoom = clearSegmentZoom;
+
+// Expose rendering state so the main process can check before allowing window close
+window.isRenderingActive = () => renderQueue.some(j => j.status === 'rendering' || j.status === 'pending');
 
 // Boot
 document.addEventListener('DOMContentLoaded', init);

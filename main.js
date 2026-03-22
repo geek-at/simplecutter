@@ -7,6 +7,7 @@ const { spawn, exec } = require('child_process');
 // Keep a global reference of the window object
 let mainWindow = null;
 let updateDownloaded = false;
+let isForceQuitting = false;
 
 // ── Random filename generator ──
 const WORDS = [
@@ -394,6 +395,36 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     console.log('SimpleCutter started successfully');
+  });
+
+  // Guard close when a render is in progress
+  mainWindow.on('close', async (e) => {
+    if (isForceQuitting) return; // allow auto-update / app.quit() through
+    e.preventDefault();
+
+    let rendering = false;
+    try {
+      rendering = await mainWindow.webContents.executeJavaScript(
+        'typeof window.isRenderingActive === "function" ? window.isRenderingActive() : false'
+      );
+    } catch (_) { /* renderer not ready — allow close */ }
+
+    if (!rendering) {
+      mainWindow.destroy();
+      return;
+    }
+
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      buttons: ['Keep rendering', 'Close anyway'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'Rendering in progress',
+      message: 'A video is still rendering.',
+      detail: 'Closing now will cancel the render and the output file will be incomplete.'
+    });
+
+    if (response === 1) mainWindow.destroy();
   });
 
   mainWindow.on('closed', () => {
@@ -823,6 +854,8 @@ app.on('ready', async () => {
     autoUpdater.checkForUpdatesAndNotify();
   }
 });
+
+app.on('before-quit', () => { isForceQuitting = true; });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

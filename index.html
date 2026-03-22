@@ -838,6 +838,24 @@
     }
     .zoom-badge-clear:hover { color: var(--danger); }
 
+    /* ======== Render Queue (footer) ======== */
+    @keyframes queue-spin { to { transform: rotate(360deg); } }
+
+    .queue-spinner {
+      display: inline-block;
+      width: 9px; height: 9px;
+      border: 1.5px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: queue-spin 0.75s linear infinite;
+      vertical-align: middle;
+      margin-right: 5px;
+    }
+
+    .queue-active { color: var(--primary); }
+    .queue-done   { color: var(--success); }
+    .queue-error  { color: var(--danger);  }
+
     /* ======== Scrollbar ======== */
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -1068,20 +1086,8 @@
           <span class="dta-red">Austria</span>
         </a>
       </span>
-      <span class="footer-right">Powered by FFmpeg</span>
+      <span class="footer-right" id="queueStatus">Powered by FFmpeg</span>
     </footer>
-  </div>
-
-  <!-- Processing Modal -->
-  <div class="modal-overlay" id="processingModal">
-    <div class="modal-content">
-      <div class="spinner"></div>
-      <h3 style="margin:0 0 6px; font-size:16px;">Processing Video</h3>
-      <p style="color:var(--text-secondary); margin:0; font-size:13px; max-width:400px; overflow:hidden; text-overflow:ellipsis; word-break:break-word; max-height:3.6em; line-height:1.2em;" id="processingStatus">Preparing...</p>
-      <div class="progress-bar-container">
-        <div class="progress-bar-fill" id="progressBar"></div>
-      </div>
-    </div>
   </div>
 
   <!-- Scripts: renderer first so electronAPI is available for controller -->
