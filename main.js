@@ -488,9 +488,9 @@ ipcMain.handle('select-output-dir', async (event, opts = {}) => {
   const sourceDir = opts.sourceDir || '';
   const ext = isGif ? 'gif' : 'mp4';
 
-  // Create a "cut" subfolder next to the source video
+  // Create a "cut" subfolder next to the source video, unless we're already inside one
   let cutDir = sourceDir;
-  if (sourceDir) {
+  if (sourceDir && path.basename(sourceDir).toLowerCase() !== 'cut') {
     cutDir = path.join(sourceDir, 'cut');
     try { fs.mkdirSync(cutDir, { recursive: true }); } catch (_) {}
   }
