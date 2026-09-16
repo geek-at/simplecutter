@@ -8,6 +8,14 @@ Made for small gaming video clips.
 
 https://github.com/user-attachments/assets/bb0d3ec2-8665-4c2b-9019-aa424ff73cf2
 
+## Features
+
+- Multiple segments per clip, each with its own speed, mute and zoom region
+- Hardware encoding (NVENC / AMD AMF / Intel QSV, VAAPI on Linux) with automatic detection
+- Quality presets plus **Fit to size** — enter a maximum file size (e.g. 95 MB for Signal) and the bitrate is chosen to land under it
+- Live estimate of the output file size while you edit
+- GIF export with palette generation
+- Render queue, screenshots, auto-update
 
 ```bash
 npm install
@@ -16,8 +24,11 @@ npm install
 npm start
 
 # build it
-npm run dist
+npm run dist:win
 ```
+
+Windows builds bundle FFmpeg (`ffmpeg/bin`, stored in git LFS; refresh with `update_ffmpeg.sh`).
+Linux builds do not bundle FFmpeg and use `ffmpeg`/`ffprobe` from `PATH`.
 
 ### Version upgrade
 

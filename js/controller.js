@@ -7,7 +7,9 @@ const appState = {
   videoDuration: 0,
   segments: [],
   isPlaying: false,
-  gpuInfo: null
+  gpuInfo: null,
+  videoFps: 0,
+  videoInfo: null   // { width, height, fps, videoBitrate, audioBitrate, hasAudioStream, rotation }
 };
 
 // ──────────── Zoom State ────────────
@@ -57,6 +59,11 @@ function cacheDom() {
     halfResToggle:    document.getElementById('halfResToggle'),
     fps30Toggle:      document.getElementById('fps30Toggle'),
     hwEncodeHint:     document.getElementById('hwEncodeHint'),
+    qualitySelect:    document.getElementById('qualitySelect'),
+    targetSizeRow:    document.getElementById('targetSizeRow'),
+    targetSizeMB:     document.getElementById('targetSizeMB'),
+    sizeEstimate:     document.getElementById('sizeEstimate'),
+    sizeEstimateNote: document.getElementById('sizeEstimateNote'),
     gpuDot:           document.getElementById('gpuDot'),
     gpuStatusText:    document.getElementById('gpuStatusText'),
     appVersion:       document.getElementById('appVersion'),
@@ -74,12 +81,17 @@ function cacheDom() {
 async function init() {
   cacheDom();
 
-  // GPU info
+  // GPU info: detection runs in the main process after the window is shown.
+  // Subscribe first so we can't miss the result, then read the current state.
+  window.electronAPI.onGPUInfo((info) => {
+    appState.gpuInfo = info;
+    updateGPUStatus();
+  });
   try {
     appState.gpuInfo = await window.electronAPI.getGPUInfo();
   } catch (e) {
     console.warn('GPU detection failed:', e);
-    appState.gpuInfo = { hasGPU: false, hardwareAcceleration: false };
+    appState.gpuInfo = { detecting: false, hasGPU: false, hardwareAcceleration: false };
   }
   updateGPUStatus();
 
@@ -116,11 +128,21 @@ function updateGPUStatus() {
   const gpu = appState.gpuInfo;
   const hasHW = gpu && gpu.hardwareAcceleration;
 
+  if (gpu && gpu.detecting) {
+    el.gpuDot.classList.add('off');
+    el.gpuStatusText.textContent = 'Detecting GPU...';
+    el.hwEncodeToggle.checked = false;
+    el.hwEncodeToggle.disabled = true;
+    el.hwEncodeHint.style.display = 'none';
+    return;
+  }
+
   if (hasHW) {
     el.gpuDot.classList.remove('off');
     const vendor = (gpu.gpuVendor || 'GPU').charAt(0).toUpperCase() + (gpu.gpuVendor || 'gpu').slice(1);
     const encoder = gpu.hwEncoder ? ` (${gpu.hwEncoder})` : '';
     el.gpuStatusText.textContent = `${vendor}${encoder}`;
+    el.gpuStatusText.title = gpu.gpuModel || '';
     el.hwEncodeToggle.checked = true;
     el.hwEncodeToggle.disabled = false;
     el.hwEncodeHint.style.display = 'none';
@@ -218,9 +240,11 @@ function loadVideo(filePath) {
     el.duration.textContent = formatTime(appState.videoDuration);
     updateTimelineSecondIndicator(el.videoPlayer.currentTime, appState.videoDuration);
 
-    // Detect FPS and disable 30fps toggle if already <= 30
+    // Probe source once: fps, dimensions, bitrates (drives the size estimate)
     try {
-      const fps = await window.electronAPI.getVideoFps(filePath);
+      const info = await window.electronAPI.getVideoInfo(filePath);
+      appState.videoInfo = info;
+      const fps = info.fps || 0;
       appState.videoFps = fps;
       if (fps > 0 && fps <= 30) {
         el.fps30Toggle.checked = false;
@@ -231,11 +255,13 @@ function loadVideo(filePath) {
         el.fps30Toggle.parentElement.title = '';
       }
     } catch (_) {
+      appState.videoInfo = null;
       el.fps30Toggle.disabled = false;
     }
 
     // Auto-add first segment covering the full video duration
     addSegment(0, appState.videoDuration);
+    updateEstimate();
   };
 
   el.videoPlayer.ontimeupdate = () => {
@@ -515,7 +541,116 @@ function updateTimelineMarkers() {
 function setupOutputOptions() {
   el.createGifToggle.addEventListener('change', (e) => {
     el.gifOptions.style.display = e.target.checked ? 'block' : 'none';
+    updateEstimate();
   });
+
+  el.qualitySelect.addEventListener('change', () => {
+    el.targetSizeRow.style.display = el.qualitySelect.value === 'size' ? 'flex' : 'none';
+    updateEstimate();
+  });
+
+  // Every option that changes output size re-runs the estimate
+  for (const input of [el.targetSizeMB, el.halfResToggle, el.fps30Toggle, el.gifWidth, el.gifFps]) {
+    input.addEventListener('input', updateEstimate);
+    input.addEventListener('change', updateEstimate);
+  }
+}
+
+// ──────────── Size Estimate ────────────
+
+/** Output geometry/duration for the current segments + options. */
+function getOutputParams() {
+  const info = appState.videoInfo || {};
+  const isGif = el.createGifToggle.checked;
+  const rotated = info.rotation === 90 || info.rotation === 270;
+  let width  = (rotated ? info.height : info.width)  || el.videoPlayer.videoWidth  || 0;
+  let height = (rotated ? info.width  : info.height) || el.videoPlayer.videoHeight || 0;
+  let fps = appState.videoFps || 30;
+
+  const durationSec = appState.segments.reduce(
+    (sum, s) => sum + Math.max(0, s.endTime - s.startTime) / (s.speed || 1), 0
+  );
+
+  if (isGif) {
+    const gifW = parseInt(el.gifWidth.value) || 480;
+    height = width > 0 ? Math.round(height * gifW / width) : 0;
+    width = gifW;
+    fps = parseInt(el.gifFps.value) || 15;
+  } else {
+    if (el.halfResToggle.checked) { width = Math.round(width / 2); height = Math.round(height / 2); }
+    if (el.fps30Toggle.checked && fps > 30) fps = 30;
+  }
+
+  const hasAudio = !isGif && info.hasAudioStream !== false;
+  return { isGif, width, height, fps, durationSec, hasAudio };
+}
+
+/** Bitrates FFmpeg will be told to use for the current settings. */
+function computeCurrentBitrates(params) {
+  const p = params || getOutputParams();
+  const info = appState.videoInfo || {};
+  return SCQuality.computeBitrates({
+    quality: el.qualitySelect.value,
+    width: p.width,
+    height: p.height,
+    fps: p.fps,
+    durationSec: p.durationSec,
+    targetMB: parseFloat(el.targetSizeMB.value) || 100,
+    sourceVideoKbps: Math.round((info.videoBitrate || 0) / 1000),
+    sourceAudioKbps: Math.round((info.audioBitrate || 0) / 1000),
+    hasAudio: p.hasAudio
+  });
+}
+
+function updateEstimate() {
+  if (!el.sizeEstimate) return;
+
+  if (!appState.videoPath || appState.segments.length === 0) {
+    el.sizeEstimate.textContent = '—';
+    el.sizeEstimate.className = 'size-estimate';
+    el.sizeEstimateNote.textContent = '';
+    return;
+  }
+
+  const p = getOutputParams();
+  if (!(p.durationSec > 0)) {
+    el.sizeEstimate.textContent = '—';
+    el.sizeEstimate.className = 'size-estimate';
+    el.sizeEstimateNote.textContent = '';
+    return;
+  }
+
+  let bytes;
+  let note = '';
+  let cls = 'size-estimate';
+
+  if (p.isGif) {
+    bytes = SCQuality.estimateGifBytes(p.width, p.height, p.fps, p.durationSec);
+    note = 'rough guess — GIF size depends heavily on content';
+  } else {
+    const br = computeCurrentBitrates(p);
+    bytes = SCQuality.estimateBytes(br.videoKbps, br.audioKbps, p.durationSec);
+    const kbpsText = `${p.width}×${p.height} @ ${Math.round(p.fps)} fps · ${(br.videoKbps / 1000).toFixed(1)} Mbit/s video`;
+    if (el.qualitySelect.value === 'size') {
+      const target = parseFloat(el.targetSizeMB.value) || 100;
+      if (bytes > target * SCQuality.MB) {
+        note = `${kbpsText} — can't fit in ${target} MB even at minimum bitrate; shorten the clip or enable half resolution`;
+        cls += ' warn';
+      } else if (br.videoKbps <= 500) {
+        note = `${kbpsText} — very low bitrate, expect visible artifacts`;
+        cls += ' warn';
+      } else {
+        note = `${kbpsText} — should land under ${target} MB`;
+        cls += ' ok';
+      }
+    } else {
+      note = kbpsText;
+    }
+  }
+
+  el.sizeEstimate.textContent = bytes > 0 ? `≈ ${SCQuality.formatMB(bytes)}` : '—';
+  el.sizeEstimate.className = cls;
+  el.sizeEstimateNote.textContent = note;
 }
 
 // ──────────── Process Video (enqueue) ────────────
@@ -537,11 +672,13 @@ async function processVideo() {
     endTime:   s.endTime,
     speed:     s.speed,
     muted:     s.muted || false,
-    hasAudio:  !isGif,
     zoom:      s.zoom || null
   }));
 
   const useHW = el.hwEncodeToggle.checked && !el.hwEncodeToggle.disabled;
+  const quality = el.qualitySelect.value;
+  const targetMB = parseFloat(el.targetSizeMB.value) || 100;
+  const bitrates = isGif ? { videoKbps: 0, audioKbps: 0 } : computeCurrentBitrates();
 
   enqueueRender({
     status: 'pending',
@@ -555,6 +692,10 @@ async function processVideo() {
       halfResolution: el.halfResToggle.checked,
       limitFps30:     el.fps30Toggle.checked,
       sourceFps:      appState.videoFps || 0,
+      quality,
+      targetMB,
+      videoKbps:      bitrates.videoKbps,
+      audioKbps:      bitrates.audioKbps,
       createGif:      isGif,
       gifOptions: {
         width: parseInt(el.gifWidth.value) || 480,
@@ -636,6 +777,7 @@ function updateProcessButton() {
     && appState.segments.length > 0
     && appState.segments.every(s => s.startTime < s.endTime && s.startTime >= 0 && s.endTime <= appState.videoDuration);
   el.processBtn.disabled = !ok;
+  updateEstimate();
 }
 
 function formatTime(sec) {

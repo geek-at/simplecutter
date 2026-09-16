@@ -1,6 +1,6 @@
 {
   "name": "dta-cutter",
-  "version": "2.0.18",
+  "version": "2.0.19",
   "description": "A simple video cutter for gaming clips with multi-segment support",
   "main": "main.js",
   "scripts": {
@@ -27,10 +27,7 @@
     "electron-builder": "^25.1.8"
   },
   "dependencies": {
-    "electron-updater": "^6.3.9",
-    "fluent-ffmpeg": "^2.1.3",
-    "@ffprobe-installer/ffprobe": "^2.1.2",
-    "@ffmpeg-installer/ffmpeg": "^1.1.0"
+    "electron-updater": "^6.3.9"
   },
   "build": {
     "appId": "electron.app.dta-cutter",
@@ -40,16 +37,22 @@
       {
         "from": "ffmpeg",
         "to": "ffmpeg",
-        "filter": ["**/*"]
+        "filter": [
+          "bin/ffmpeg",
+          "bin/ffmpeg.exe",
+          "bin/ffprobe",
+          "bin/ffprobe.exe"
+        ]
       }
     ],
     "files": [
       "main.js",
       "renderer.js",
       "index.html",
-      "js/**/*",
-      "css/**/*",
-      "fonts/**/*"
+      "js/quality.js",
+      "js/controller.js",
+      "build/icon.png",
+      "build/icon_32.png"
     ],
     "win": {
       "target": [

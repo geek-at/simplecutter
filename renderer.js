@@ -5,9 +5,12 @@ const { ipcRenderer } = require('electron');
 
 window.electronAPI = {
   getGPUInfo: () => ipcRenderer.invoke('get-gpu-info'),
+  onGPUInfo: (callback) => {
+    ipcRenderer.on('gpu-info', (_event, data) => callback(data));
+  },
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
-  getVideoFps: (filePath) => ipcRenderer.invoke('get-video-fps', filePath),
+  getVideoInfo: (filePath) => ipcRenderer.invoke('get-video-info', filePath),
   selectVideo: () => ipcRenderer.invoke('select-video'),
   selectOutputDir: (opts) => ipcRenderer.invoke('select-output-dir', opts),
   saveScreenshot: (opts) => ipcRenderer.invoke('save-screenshot', opts),

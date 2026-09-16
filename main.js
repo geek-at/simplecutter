@@ -3,6 +3,7 @@ const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const { spawn, exec } = require('child_process');
+const SCQuality = require('./js/quality');
 
 // Keep a global reference of the window object
 let mainWindow = null;
@@ -37,158 +38,163 @@ function generateRandomFilename() {
   return `${pick()}-${pick()}-${pick()}`;
 }
 
-// GPU detection results
+// GPU detection results (filled in asynchronously after the window is shown)
 let gpuInfo = {
+  detecting: true,
   hasGPU: false,
   gpuVendor: null,
   gpuModel: null,
-  hardwareAcceleration: true,
-  supportedCodecs: []
+  hardwareAcceleration: false,
+  hwEncoder: null,
+  vaapiDevice: null
 };
 
-// Detect GPU information via OS-level detection + real FFmpeg encoder testing
-function detectGPU() {
-  return new Promise(async (resolve) => {
+// h264 hardware encoders to probe, in preference order, per platform.
+// The probe result is the source of truth — OS-reported GPU names are only used
+// for the label shown in the UI, because a machine can have several GPUs
+// (e.g. laptop iGPU + dGPU) and the OS lists them in arbitrary order.
+const ENCODER_VENDOR = {
+  h264_nvenc: 'nvidia',
+  h264_amf: 'amd',
+  h264_qsv: 'intel',
+  h264_vaapi: null,        // vendor comes from the OS name (AMD or Intel)
+  h264_videotoolbox: 'apple'
+};
 
-    // ── Step 1: Identify GPU vendor from OS ──
-    try {
-      if (process.platform === 'win32') {
-        // WMIC gives us the real GPU name on Windows
-        const wmicOut = await runCmd('wmic path win32_VideoController get Name /value');
-        const nameMatch = wmicOut.match(/Name=(.+)/i);
-        if (nameMatch) {
-          const name = nameMatch[1].trim().toLowerCase();
-          gpuInfo.gpuModel = nameMatch[1].trim();
-          if (name.includes('nvidia') || name.includes('geforce') || name.includes('rtx') || name.includes('gtx')) {
-            gpuInfo.gpuVendor = 'nvidia';
-          } else if (name.includes('amd') || name.includes('radeon') || name.includes('rx ')) {
-            gpuInfo.gpuVendor = 'amd';
-          } else if (name.includes('intel') || name.includes('uhd') || name.includes('iris')) {
-            gpuInfo.gpuVendor = 'intel';
-          }
-          gpuInfo.hasGPU = true;
-        }
-      } else {
-        // Linux: use lspci
-        const lspciOut = await runCmd('lspci 2>/dev/null');
-        const gpuLines = lspciOut.split('\n').filter(l =>
-          /vga|3d|display/i.test(l) && !/microsoft/i.test(l)   // skip WSL virtual GPU
-        );
-        // If no real GPU lines, check all GPU lines (including Microsoft/WSL)
-        const lines = gpuLines.length > 0 ? gpuLines : lspciOut.split('\n').filter(l => /vga|3d|display/i.test(l));
+function encoderCandidates() {
+  switch (process.platform) {
+    case 'win32':  return ['h264_nvenc', 'h264_amf', 'h264_qsv'];
+    case 'linux':  return ['h264_nvenc', 'h264_vaapi', 'h264_qsv'];
+    case 'darwin': return ['h264_videotoolbox'];
+    default:       return [];
+  }
+}
 
-        for (const line of lines) {
-          const lower = line.toLowerCase();
-          if (lower.includes('nvidia') || lower.includes('geforce')) {
-            gpuInfo.gpuVendor = 'nvidia';
-          } else if (lower.includes('amd') || lower.includes('radeon') || lower.includes('advanced micro')) {
-            gpuInfo.gpuVendor = 'amd';
-          } else if (lower.includes('intel')) {
-            gpuInfo.gpuVendor = 'intel';
-          }
-          gpuInfo.gpuModel = line.replace(/^.*:\s*/, '').trim();
-          if (gpuInfo.gpuVendor) { gpuInfo.hasGPU = true; break; }
-        }
-      }
-    } catch (e) {
-      console.warn('OS GPU detection failed:', e.message);
+function vendorFromName(name) {
+  const n = String(name || '').toLowerCase();
+  if (/microsoft basic|llvmpipe|vmware|virtualbox/.test(n)) return null;
+  if (/nvidia|geforce|quadro|\brtx\b|\bgtx\b/.test(n)) return 'nvidia';
+  if (/\bamd\b|radeon|advanced micro|\brx\s?\d/.test(n)) return 'amd';
+  if (/intel|\buhd\b|\biris\b|\barc\b/.test(n)) return 'intel';
+  if (/apple/.test(n)) return 'apple';
+  return null;
+}
+
+function findVaapiDevice() {
+  try {
+    const nodes = fs.readdirSync('/dev/dri').filter(n => n.startsWith('renderD')).sort();
+    return nodes.length ? path.join('/dev/dri', nodes[0]) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/** Ask the OS for display adapter names (cosmetic only). Never throws. */
+async function detectOsGpuNames() {
+  try {
+    if (process.platform === 'win32') {
+      // wmic was removed in Windows 11 24H2; CIM via PowerShell is the supported path
+      const out = await runCmd('powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name"');
+      return out.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     }
-
-    // ── Step 2: Fallback — Electron GPU info ──
-    if (!gpuInfo.gpuVendor) {
-      try {
-        const info = await app.getGPUInfo('complete');
-        if (info && info.gpuDevice) {
-          for (const d of info.gpuDevice) {
-            const vid = d.vendorId;
-            // Skip Microsoft Basic Render Driver (0x1414)
-            if (vid === 0x1414) continue;
-            gpuInfo.hasGPU = true;
-            if (vid === 0x10DE) gpuInfo.gpuVendor = 'nvidia';
-            else if (vid === 0x1002) gpuInfo.gpuVendor = 'amd';
-            else if (vid === 0x8086) gpuInfo.gpuVendor = 'intel';
-            gpuInfo.gpuModel = d.deviceString || `0x${(d.deviceId || 0).toString(16)}`;
-            if (gpuInfo.gpuVendor) break;
-          }
-        }
-      } catch (_) { /* ignore */ }
+    if (process.platform === 'linux') {
+      const out = await runCmd('lspci 2>/dev/null');
+      return out.split('\n')
+        .filter(l => /vga|3d|display/i.test(l))
+        .map(l => l.replace(/^.*?:\s*/, '').trim())
+        .filter(Boolean);
     }
-
-    // ── Step 3: Test FFmpeg encoders (actually run a tiny encode) ──
-    // Order encoders by vendor preference then by common availability
-    const candidateEncoders = [];
-
-    if (gpuInfo.gpuVendor === 'nvidia') {
-      candidateEncoders.push({ encoder: 'h264_nvenc', vendor: 'nvidia' });
-    } else if (gpuInfo.gpuVendor === 'amd') {
-      candidateEncoders.push({ encoder: 'h264_amf',   vendor: 'amd' });     // Windows AMD
-      candidateEncoders.push({ encoder: 'h264_vaapi',  vendor: 'amd' });     // Linux AMD
-    } else if (gpuInfo.gpuVendor === 'intel') {
-      candidateEncoders.push({ encoder: 'h264_qsv',   vendor: 'intel' });
-      candidateEncoders.push({ encoder: 'h264_vaapi',  vendor: 'intel' });
+    if (process.platform === 'darwin') {
+      const out = await runCmd('system_profiler SPDisplaysDataType 2>/dev/null');
+      const m = out.match(/Chipset Model:\s*(.+)/);
+      return m ? [m[1].trim()] : [];
     }
-    // Always try the rest as fallback
-    candidateEncoders.push(
-      { encoder: 'h264_nvenc',  vendor: 'nvidia' },
-      { encoder: 'h264_amf',   vendor: 'amd' },
-      { encoder: 'h264_vaapi',  vendor: 'amd' },
-      { encoder: 'h264_qsv',   vendor: 'intel' }
-    );
+  } catch (_) { /* ignore */ }
+  return [];
+}
 
-    // De-duplicate
-    const seen = new Set();
-    const uniqueEncoders = candidateEncoders.filter(e => {
-      if (seen.has(e.encoder)) return false;
-      seen.add(e.encoder);
-      return true;
-    });
-
-    const ffmpegPath = getFFmpegPath();
-    for (const { encoder, vendor } of uniqueEncoders) {
-      const works = await testEncoder(ffmpegPath, encoder);
-      if (works) {
-        gpuInfo.hasGPU = true;
-        gpuInfo.gpuVendor = gpuInfo.gpuVendor || vendor;
-        gpuInfo.hwEncoder = encoder;
-        gpuInfo.hardwareAcceleration = true;
-        break;
-      }
+/** Fallback when the OS gave us nothing: Chromium's view of the active GPU. */
+async function detectElectronGpuNames() {
+  try {
+    const info = await app.getGPUInfo('complete');
+    const names = [];
+    for (const d of (info && info.gpuDevice) || []) {
+      if (d.vendorId === 0x1414) continue; // Microsoft Basic Render Driver
+      let vendor = null;
+      if (d.vendorId === 0x10DE) vendor = 'NVIDIA';
+      else if (d.vendorId === 0x1002) vendor = 'AMD';
+      else if (d.vendorId === 0x8086) vendor = 'Intel';
+      const desc = d.deviceString || `0x${(d.deviceId || 0).toString(16)}`;
+      names.push(vendor && !vendorFromName(desc) ? `${vendor} ${desc}` : desc);
     }
+    return names;
+  } catch (_) {
+    return [];
+  }
+}
 
-    if (!gpuInfo.hwEncoder) {
-      gpuInfo.hardwareAcceleration = false;
+// Probe FFmpeg encoders (real tiny encode) and pick the first that works.
+// Runs after the window is visible so startup isn't blocked; the renderer is
+// notified via the 'gpu-info' channel when done.
+async function detectGPU() {
+  const osNamesPromise = detectOsGpuNames();
+  const ffmpegPath = getFFmpegPath();
+  const vaapiDevice = process.platform === 'linux' ? findVaapiDevice() : null;
+
+  for (const encoder of encoderCandidates()) {
+    if (encoder === 'h264_vaapi' && !vaapiDevice) continue;
+    if (await testEncoder(ffmpegPath, encoder, vaapiDevice)) {
+      gpuInfo.hwEncoder = encoder;
+      gpuInfo.hasGPU = true;
+      gpuInfo.hardwareAcceleration = true;
+      gpuInfo.gpuVendor = ENCODER_VENDOR[encoder];
+      if (encoder === 'h264_vaapi') gpuInfo.vaapiDevice = vaapiDevice;
+      break;
     }
+  }
 
-    console.log('GPU Detection:', gpuInfo);
-    resolve(gpuInfo);
-  });
+  let names = await osNamesPromise;
+  if (names.length === 0) names = await detectElectronGpuNames();
+  const named = names.map(n => ({ name: n, vendor: vendorFromName(n) }));
+
+  // Label the GPU that actually won the probe; otherwise the first real adapter
+  const match = (gpuInfo.gpuVendor && named.find(n => n.vendor === gpuInfo.gpuVendor))
+    || named.find(n => n.vendor)
+    || named[0];
+  if (match) {
+    gpuInfo.gpuModel = match.name;
+    if (!gpuInfo.gpuVendor) gpuInfo.gpuVendor = match.vendor;
+    if (!gpuInfo.hwEncoder && match.vendor) gpuInfo.hasGPU = true;
+  }
+
+  gpuInfo.detecting = false;
+  console.log('GPU Detection:', gpuInfo);
+  mainWindow?.webContents.send('gpu-info', gpuInfo);
+  return gpuInfo;
 }
 
 /**
  * Test if an FFmpeg encoder actually works by encoding 1 black frame.
  * Returns true if the encoder ran successfully, false otherwise.
  */
-function testEncoder(ffmpegPath, encoder) {
+function testEncoder(ffmpegPath, encoder, vaapiDevice) {
   return new Promise((resolve) => {
     const tmpOut = path.join(app.getPath('temp'), `_sc_test_${encoder}.mp4`);
-    // Generate 1 frame of black video and encode with the candidate encoder
     // NOTE: Use 256x256 — GPU encoders (AMF, NVENC, QSV) reject very small
     //       resolutions (e.g. 64x64) and fail even when the hardware is fine.
-    const args = [
-      '-hide_banner', '-loglevel', 'error',
-      '-f', 'lavfi', '-i', 'color=c=black:s=256x256:d=0.1:rate=25',
-      '-c:v', encoder,
-      '-frames:v', '1',
-      '-y', tmpOut
-    ];
+    const args = ['-hide_banner', '-loglevel', 'error'];
+    if (encoder === 'h264_vaapi') args.push('-vaapi_device', vaapiDevice);
+    args.push('-f', 'lavfi', '-i', 'color=c=black:s=256x256:d=0.1:rate=25');
+    // VAAPI encoders only accept frames already uploaded to the GPU
+    if (encoder === 'h264_vaapi') args.push('-vf', 'format=nv12,hwupload');
+    args.push('-c:v', encoder, '-frames:v', '1', '-y', tmpOut);
 
-    const proc = spawn(ffmpegPath, args, { timeout: 8000 });
     let timedOut = false;
+    const proc = spawn(ffmpegPath, args);
     const timer = setTimeout(() => { timedOut = true; proc.kill(); }, 8000);
 
     proc.on('close', (code) => {
       clearTimeout(timer);
-      // Clean up temp file
       try { fs.unlinkSync(tmpOut); } catch (_) {}
       resolve(!timedOut && code === 0);
     });
@@ -244,47 +250,6 @@ function getFFprobePath() {
   return p;
 }
 
-// Detect video FPS using ffprobe
-function getVideoFps(filePath) {
-  return new Promise((resolve) => {
-    const probePath = getFFprobePath();
-    const args = [
-      '-v', 'error',
-      '-select_streams', 'v:0',
-      '-show_entries', 'stream=avg_frame_rate,r_frame_rate',
-      '-of', 'csv=p=0',
-      filePath
-    ];
-    const proc = spawn(probePath, args, { timeout: 10000 });
-    let stdout = '';
-    proc.stdout.on('data', d => stdout += d.toString());
-    proc.on('close', () => {
-      // Prefer avg_frame_rate for VFR footage; fallback to r_frame_rate.
-      // Clamp to sane range to avoid pathological values (e.g. 45045 fps).
-      const parseRate = (rate) => {
-        const parts = String(rate || '').trim().split('/');
-        if (parts.length !== 2) return 0;
-        const n = Number(parts[0]);
-        const d = Number(parts[1]);
-        if (!isFinite(n) || !isFinite(d) || d === 0) return 0;
-        return n / d;
-      };
-
-      const lines = stdout
-        .split('\n')
-        .map(l => l.trim())
-        .filter(Boolean);
-
-      const avg = parseRate(lines[0]);
-      const r   = parseRate(lines[1] || lines[0]);
-      const fps = (avg > 0 ? avg : r);
-      if (isFinite(fps) && fps >= 1 && fps <= 240) resolve(fps);
-      else resolve(0);
-    });
-    proc.on('error', () => resolve(0));
-  });
-}
-
 // Detect video rotation and audio presence using ffprobe
 function getVideoInfo(filePath) {
   return new Promise((resolve) => {
@@ -334,8 +299,9 @@ function getVideoInfo(filePath) {
         }
 
         // Fallback to container bitrate when stream bitrate is unavailable
+        // (container bitrate covers all streams, so take the audio share off)
         if (!videoBitrate && data.format?.bit_rate) {
-          videoBitrate = Number(data.format.bit_rate) || 0;
+          videoBitrate = Math.max(0, (Number(data.format.bit_rate) || 0) - audioBitrate);
         }
 
         let rotation = 0;
@@ -464,8 +430,8 @@ ipcMain.handle('open-external-url', async (_event, url) => {
   return true;
 });
 
-ipcMain.handle('get-video-fps', async (event, filePath) => {
-  return getVideoFps(filePath);
+ipcMain.handle('get-video-info', async (event, filePath) => {
+  return getVideoInfo(filePath);
 });
 
 ipcMain.handle('select-video', async () => {
@@ -585,18 +551,40 @@ ipcMain.handle('save-screenshot', async (event, opts) => {
   });
 });
 
+// Per-encoder rate-control arguments for a single-pass VBR at a target bitrate.
+// Using explicit bitrates (instead of CRF/QP) makes the output size predictable,
+// which is what the renderer's size estimate relies on.
+function encoderRateArgs(encoder, videoKbps) {
+  const b = `${videoKbps}k`;
+  const maxrate = `${Math.round(videoKbps * 1.15)}k`;
+  const bufsize = `${Math.round(videoKbps * 2)}k`;
+  switch (encoder) {
+    case 'h264_nvenc':
+      return ['-c:v', encoder, '-preset', 'p4', '-tune', 'hq', '-rc', 'vbr', '-b:v', b, '-maxrate', maxrate, '-bufsize', bufsize];
+    case 'h264_amf':
+      return ['-c:v', encoder, '-quality', 'balanced', '-rc', 'vbr_peak', '-b:v', b, '-maxrate', maxrate, '-bufsize', bufsize];
+    case 'h264_qsv':
+      return ['-c:v', encoder, '-preset', 'medium', '-b:v', b, '-maxrate', maxrate, '-bufsize', bufsize];
+    case 'h264_vaapi':
+      return ['-c:v', encoder, '-rc_mode', 'VBR', '-b:v', b, '-maxrate', maxrate, '-bufsize', bufsize];
+    case 'h264_videotoolbox':
+      return ['-c:v', encoder, '-b:v', b, '-maxrate', maxrate, '-bufsize', bufsize];
+    default:
+      return ['-c:v', 'libx264', '-preset', 'fast', '-b:v', b, '-maxrate', maxrate, '-bufsize', bufsize];
+  }
+}
+
 // Process video segments
 ipcMain.handle('process-video', async (event, options) => {
-  const { segments, outputPath, useHwAccel, createGif, gifOptions, halfResolution, limitFps30, sourceFps } = options;
+  const { segments, outputPath, useHwAccel, createGif, gifOptions, halfResolution, limitFps30, sourceFps, quality, targetMB } = options;
   const ffmpegPath = getFFmpegPath();
 
   // Detect rotation and audio presence from the source video
   const inputPath = segments.length > 0 ? segments[0].inputPath : null;
-  const videoInfo = inputPath ? await getVideoInfo(inputPath) : { rotation: 0, hasAudioStream: true, fps: 0, videoBitrate: 0, audioBitrate: 0 };
+  const videoInfo = inputPath ? await getVideoInfo(inputPath) : { rotation: 0, hasAudioStream: true, fps: 0, videoBitrate: 0, audioBitrate: 0, width: 0, height: 0 };
   const rotation = videoInfo.rotation;
   const detectedFps = videoInfo.fps > 0 ? videoInfo.fps : sourceFps;
   const safeFps = (isFinite(detectedFps) && detectedFps >= 1 && detectedFps <= 240) ? detectedFps : 0;
-  console.log('Detected video rotation:', rotation, 'Has audio:', videoInfo.hasAudioStream, 'FPS:', safeFps, 'Video bitrate:', videoInfo.videoBitrate, 'Audio bitrate:', videoInfo.audioBitrate);
 
   // Effective dimensions after rotation (90/270 swaps width/height)
   const rawW = videoInfo.width  || 0;
@@ -607,25 +595,53 @@ ipcMain.handle('process-video', async (event, options) => {
   const zoomScaleW = effectiveW > 0 ? Math.round(effectiveW / 2) * 2 : 0;
   const zoomScaleH = effectiveH > 0 ? Math.round(effectiveH / 2) * 2 : 0;
 
-  return new Promise((resolve, reject) => {
-    // Only include audio if not GIF and the source actually has an audio stream
-    const hasAudio = !createGif && videoInfo.hasAudioStream;
+  // Only include audio if not GIF and the source actually has an audio stream
+  const hasAudio = !createGif && videoInfo.hasAudioStream;
 
+  // Bitrates: prefer the values the renderer computed (they back the size
+  // estimate shown to the user); recompute from the same model otherwise.
+  const totalDuration = segments.reduce((s, seg) => s + (seg.endTime - seg.startTime) / (seg.speed || 1), 0);
+  let videoKbps = Number(options.videoKbps) || 0;
+  let audioKbps = Number(options.audioKbps) || 0;
+  if (!createGif && !(videoKbps > 0)) {
+    const outW = halfResolution ? Math.round(effectiveW / 2) : effectiveW;
+    const outH = halfResolution ? Math.round(effectiveH / 2) : effectiveH;
+    const outFps = (limitFps30 && safeFps > 30) ? 30 : safeFps;
+    const br = SCQuality.computeBitrates({
+      quality: quality || 'high', width: outW, height: outH, fps: outFps,
+      durationSec: totalDuration, targetMB,
+      sourceVideoKbps: Math.round(videoInfo.videoBitrate / 1000),
+      sourceAudioKbps: Math.round(videoInfo.audioBitrate / 1000),
+      hasAudio
+    });
+    videoKbps = br.videoKbps;
+    audioKbps = br.audioKbps;
+  }
+  console.log('Render:', { rotation, hasAudio, fps: safeFps, quality, videoKbps, audioKbps, totalDuration });
+
+  return new Promise((resolve, reject) => {
     // Build filter complex for multiple segments
     let filterComplex = '';
     let inputs = [];
     let concatInputs = '';
-    
+
     segments.forEach((seg, index) => {
-      inputs.push('-i', seg.inputPath);
-      
-      let videoFilter = '';
-      let audioFilter = '';
-      
+      // Seek on the input side: FFmpeg jumps to the nearest keyframe before the
+      // segment start and decodes only from there. (The old trim filter made it
+      // decode the whole file from 0 up to every segment, which is extremely slow
+      // for segments late in a long recording.) Input seeking is still
+      // frame-accurate when re-encoding: frames before the exact start are
+      // decoded and dropped.
+      const segDur = Math.max(0, seg.endTime - seg.startTime);
+      inputs.push('-ss', String(seg.startTime), '-t', String(segDur), '-i', seg.inputPath);
+
+      let videoFilter = 'setpts=PTS-STARTPTS';
+      let audioFilter = 'asetpts=PTS-STARTPTS';
+
       // Apply speed filter
       if (seg.speed !== 1) {
         const pts = 1 / seg.speed;
-        videoFilter = `setpts=${pts}*PTS`;
+        videoFilter += `,setpts=${pts}*PTS`;
         if (hasAudio) {
           // atempo only supports 0.5-2.0, chain multiple for extreme speeds
           let speed = seg.speed;
@@ -633,18 +649,10 @@ ipcMain.handle('process-video', async (event, options) => {
           while (speed > 2.0) { atempoChain.push('atempo=2.0'); speed /= 2.0; }
           while (speed < 0.5) { atempoChain.push('atempo=0.5'); speed *= 2.0; }
           atempoChain.push(`atempo=${speed}`);
-          audioFilter = atempoChain.join(',');
+          audioFilter += ',' + atempoChain.join(',');
         }
       }
-      
-      // Apply trim
-      let trimFilter = `trim=start=${seg.startTime}:end=${seg.endTime},setpts=PTS-STARTPTS`;
-      if (videoFilter) {
-        videoFilter = `${trimFilter},${videoFilter}`;
-      } else {
-        videoFilter = trimFilter;
-      }
-      
+
       // Apply rotation fix for portrait/rotated videos
       if (rotation === 90) {
         videoFilter += ',transpose=1';
@@ -667,7 +675,8 @@ ipcMain.handle('process-video', async (event, options) => {
 
       // Apply half-resolution scale if requested (not for GIF — GIF has its own scale)
       if (halfResolution && !createGif) {
-        videoFilter += `,scale=iw/2:ih/2:flags=lanczos`;
+        // trunc(iw/4)*2 == iw/2 rounded down to an even number (h264 needs even dimensions)
+        videoFilter += `,scale=trunc(iw/4)*2:trunc(ih/4)*2:flags=lanczos`;
       }
 
       // Apply 30fps cap if requested (not for GIF — GIF has its own fps)
@@ -680,20 +689,22 @@ ipcMain.handle('process-video', async (event, options) => {
       if (hasAudio) {
         if (seg.muted) {
           // Generate silence for the duration of this (trimmed + speed-adjusted) segment
-          const segDur = (seg.endTime - seg.startTime) / (seg.speed || 1);
-          filterComplex += `aevalsrc=0:d=${segDur.toFixed(4)}[a${index}];`;
-        } else if (audioFilter) {
-          audioFilter = `atrim=start=${seg.startTime}:end=${seg.endTime},asetpts=PTS-STARTPTS,${audioFilter}`;
-          filterComplex += `[${index}:a]${audioFilter}[a${index}];`;
+          const silenceDur = segDur / (seg.speed || 1);
+          filterComplex += `aevalsrc=0:d=${silenceDur.toFixed(4)}[a${index}];`;
         } else {
-          filterComplex += `[${index}:a]atrim=start=${seg.startTime}:end=${seg.endTime},asetpts=PTS-STARTPTS[a${index}];`;
+          filterComplex += `[${index}:a]${audioFilter}[a${index}];`;
         }
         concatInputs += `[v${index}][a${index}]`;
       } else {
         concatInputs += `[v${index}]`;
       }
     });
-    
+
+    // Use the tested hardware encoder from GPU detection (if requested)
+    const hwEncoder = (!createGif && useHwAccel) ? gpuInfo.hwEncoder : null;
+    const useVaapi = hwEncoder === 'h264_vaapi' && !!gpuInfo.vaapiDevice;
+    let videoOut = '[outv]';
+
     // Concatenation
     if (createGif) {
       // GIF: video-only concat, then apply GIF-specific filters
@@ -709,47 +720,24 @@ ipcMain.handle('process-video', async (event, options) => {
       // MP4 without audio stream: plain video-only concat
       filterComplex += `${concatInputs}concat=n=${segments.length}:v=1:a=0[outv]`;
     }
-    
-    // Use the tested hardware encoder from GPU detection (if requested)
-    const hwEncoder = (!createGif && useHwAccel) ? gpuInfo.hwEncoder : null;
-    
+
+    // VAAPI encoders only accept GPU-resident frames: upload after all software filters
+    if (useVaapi) {
+      filterComplex += `;[outv]format=nv12,hwupload[outhw]`;
+      videoOut = '[outhw]';
+    }
+
     // NOTE: Intentionally avoid hardware decoding (-hwaccel input args).
     // We keep software decode + software filters for stability across
-    // trim/setpts/concat pipelines, and only use hardware for encoding.
-    
+    // setpts/concat pipelines, and only use hardware for encoding.
+
     // Build output args
     const outputArgs = [];
     if (!createGif) {
-      if (hwEncoder) {
-        outputArgs.push('-c:v', hwEncoder);
-        // Quality parameters per encoder — tuned to match libx264 CRF ~20 quality
-        if (hwEncoder === 'h264_nvenc') {
-          outputArgs.push('-preset', 'p4', '-rc', 'constqp', '-qp', '20');
-        } else if (hwEncoder === 'h264_amf') {
-          outputArgs.push('-quality', 'balanced', '-rc', 'cqp', '-qp_i', '20', '-qp_p', '20', '-qp_b', '20');
-        } else if (hwEncoder === 'h264_qsv') {
-          outputArgs.push('-preset', 'medium', '-global_quality', '20');
-        } else if (hwEncoder === 'h264_vaapi') {
-          outputArgs.push('-qp', '20');
-        }
-      } else {
-        outputArgs.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '20');
-      }
-
-      // Preserve source bitrate by default when available
-      if (videoInfo.videoBitrate > 0) {
-        const kbps = Math.max(100, Math.round(videoInfo.videoBitrate / 1000));
-        outputArgs.push('-b:v', `${kbps}k`);
-      }
+      outputArgs.push(...encoderRateArgs(hwEncoder, videoKbps));
 
       if (hasAudio) {
-        outputArgs.push('-c:a', 'aac');
-        if (videoInfo.audioBitrate > 0) {
-          const audioKbps = Math.max(32, Math.round(videoInfo.audioBitrate / 1000));
-          outputArgs.push('-b:a', `${audioKbps}k`);
-        } else {
-          outputArgs.push('-b:a', '192k');
-        }
+        outputArgs.push('-c:a', 'aac', '-b:a', `${audioKbps}k`);
       }
 
       // Preserve source framerate — hardware encoders may default to 30/25 fps
@@ -757,15 +745,19 @@ ipcMain.handle('process-video', async (event, options) => {
       if (safeFps > 0 && !limitFps30) {
         outputArgs.push('-r', String(Number(safeFps.toFixed(3))));
       }
+
+      // Move the moov atom to the front so the clip previews in chat apps before it's fully downloaded
+      outputArgs.push('-movflags', '+faststart');
     }
-    
+
     // Build final command
-    const mapArgs = ['-map', '[outv]'];
+    const mapArgs = ['-map', videoOut];
     if (hasAudio) mapArgs.push('-map', '[outa]');
 
     const args = [
+      '-hide_banner',
+      ...(useVaapi ? ['-vaapi_device', gpuInfo.vaapiDevice] : []),
       // Disable auto-rotation — we handle it manually in the filter chain
-      // to ensure correctness with hardware decoding
       ...(rotation !== 0 ? ['-noautorotate'] : []),
       ...inputs,
       '-filter_complex', filterComplex,
@@ -774,25 +766,24 @@ ipcMain.handle('process-video', async (event, options) => {
       '-y',
       outputPath
     ];
-    
+
     console.log('FFmpeg command:', ffmpegPath, args.join(' '));
-    
+
     const ffmpeg = spawn(ffmpegPath, args);
     let stderr = '';
-    
+
     ffmpeg.stderr.on('data', (data) => {
       const str = data.toString();
       stderr += str;
-      
+
       // Parse progress
       const timeMatch = str.match(/time=(\d+):(\d+):(\d+\.\d+)/);
       if (timeMatch) {
         const currentTime = parseInt(timeMatch[1]) * 3600 + parseInt(timeMatch[2]) * 60 + parseFloat(timeMatch[3]);
-        // You can send progress back to renderer
         mainWindow?.webContents.send('ffmpeg-progress', { currentTime });
       }
     });
-    
+
     ffmpeg.on('close', (code) => {
       if (code === 0) {
         resolve({ success: true, outputPath });
@@ -800,7 +791,7 @@ ipcMain.handle('process-video', async (event, options) => {
         reject(new Error(`FFmpeg exited with code ${code}: ${stderr}`));
       }
     });
-    
+
     ffmpeg.on('error', (err) => {
       reject(err);
     });
@@ -843,12 +834,11 @@ app.on('ready', async () => {
   // Set correct app identity for Windows notifications & updater
   app.setAppUserModelId('electron.app.dta-cutter');
 
-  // Detect GPU first
-  await detectGPU();
-  
-  // Create window after GPU detection
+  // Show the window immediately; GPU/encoder probing runs in the background
+  // and pushes its result to the renderer when done.
   createWindow();
-  
+  detectGPU().catch(err => console.warn('GPU detection failed:', err));
+
   // Check for updates in production
   if (app.isPackaged) {
     autoUpdater.checkForUpdatesAndNotify();

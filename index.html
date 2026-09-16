@@ -554,6 +554,56 @@
       padding: 10px;
     }
 
+    .option-select {
+      background: var(--bg-dark);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 8px;
+      color: var(--text-primary);
+      font-size: 12px;
+      max-width: 200px;
+      cursor: pointer;
+    }
+    .option-select:focus { outline: none; border-color: var(--primary); }
+
+    .target-size-input {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .target-size-input input {
+      width: 70px;
+      background: var(--bg-dark);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 8px;
+      color: var(--text-primary);
+      font-size: 12px;
+      text-align: right;
+    }
+    .target-size-input input:focus { outline: none; border-color: var(--primary); }
+
+    .size-estimate-box {
+      background: var(--bg-dark);
+      border-radius: 8px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .size-estimate-box .option-label { font-size: 11px; }
+    .size-estimate {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      font-variant-numeric: tabular-nums;
+    }
+    .size-estimate.ok   { color: var(--success); }
+    .size-estimate.warn { color: var(--warning); }
+    .size-estimate-note { font-size: 11px; color: var(--text-secondary); min-height: 14px; }
+
     .gif-options-row { display: flex; gap: 10px; }
 
     .gif-option { flex: 1; }
@@ -1033,6 +1083,30 @@
                 </div>
               </div>
 
+              <div class="option-row" id="qualityRow">
+                <span class="option-label">Quality</span>
+                <select class="option-select" id="qualitySelect" title="Higher quality = larger file">
+                  <option value="high" selected>High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                  <option value="original">Original (match source bitrate)</option>
+                  <option value="size">Fit to size (MB)…</option>
+                </select>
+              </div>
+
+              <div class="option-row" id="targetSizeRow" style="display:none;">
+                <span class="option-label">Max file size</span>
+                <label class="target-size-input">
+                  <input type="number" id="targetSizeMB" value="95" min="1" max="10000" step="1"> MB
+                </label>
+              </div>
+
+              <div class="size-estimate-box" id="sizeEstimateBox">
+                <span class="option-label">Estimated output size</span>
+                <span class="size-estimate" id="sizeEstimate">—</span>
+                <span class="size-estimate-note" id="sizeEstimateNote"></span>
+              </div>
+
               <div class="option-row">
                 <span class="option-label">Half Resolution</span>
                 <label class="toggle-switch">
@@ -1092,7 +1166,7 @@
 
   <!-- Scripts: renderer first so electronAPI is available for controller -->
   <script src="renderer.js"></script>
-  <script src="js/core_functions.js"></script>
+  <script src="js/quality.js"></script>
   <script src="js/controller.js"></script>
 
   <script>
