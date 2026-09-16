@@ -86,7 +86,8 @@
     "publish": {
       "provider": "github",
       "owner": "geek-at",
-      "repo": "simplecutter"
+      "repo": "simplecutter",
+      "releaseType": "release"
     }
   }
 }
