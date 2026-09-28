@@ -526,7 +526,9 @@ ipcMain.handle('save-screenshot', async (event, opts) => {
     const yf = Math.max(0, y).toFixed(6);
     const wf = Math.min(1 - parseFloat(xf), w).toFixed(6);
     const hf = Math.min(1 - parseFloat(yf), h).toFixed(6);
-    vfArgs.push('-vf', `crop=iw*${wf}:ih*${hf}:iw*${xf}:ih*${yf},scale=iw/${wf}:ih/${hf}:flags=lanczos`);
+    // Enlarge by one uniform factor so the region keeps its shape (no stretching)
+    const factor = Math.max(parseFloat(wf), parseFloat(hf), 0.01).toFixed(6);
+    vfArgs.push('-vf', `crop=iw*${wf}:ih*${hf}:iw*${xf}:ih*${yf},scale=iw/${factor}:ih/${factor}:flags=lanczos`);
   }
 
   return new Promise((resolve, reject) => {
@@ -670,7 +672,16 @@ ipcMain.handle('process-video', async (event, options) => {
         const wf = Math.min(1 - parseFloat(xf), w).toFixed(6);
         const hf = Math.min(1 - parseFloat(yf), h).toFixed(6);
         // Scale to exact pixel dimensions to guarantee concat compatibility; reset SAR to 1:1
-        videoFilter += `,crop=iw*${wf}:ih*${hf}:iw*${xf}:ih*${yf},scale=${zoomScaleW}:${zoomScaleH}:flags=lanczos,setsar=1`;
+        videoFilter += `,crop=iw*${wf}:ih*${hf}:iw*${xf}:ih*${yf}`;
+        if (Math.abs(parseFloat(wf) - parseFloat(hf)) < 0.01) {
+          // Region has the frame's aspect ratio: fill the frame exactly
+          videoFilter += `,scale=${zoomScaleW}:${zoomScaleH}:flags=lanczos,setsar=1`;
+        } else {
+          // Free-form region: fit inside the frame and pad with black instead of stretching.
+          // Output stays at the exact frame size, which concat requires.
+          videoFilter += `,scale=${zoomScaleW}:${zoomScaleH}:force_original_aspect_ratio=decrease:flags=lanczos`
+            + `,pad=${zoomScaleW}:${zoomScaleH}:(ow-iw)/2:(oh-ih)/2:black,setsar=1`;
+        }
       }
 
       // Apply half-resolution scale if requested (not for GIF — GIF has its own scale)

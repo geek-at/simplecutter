@@ -15,6 +15,7 @@ https://github.com/user-attachments/assets/bb0d3ec2-8665-4c2b-9019-aa424ff73cf2
 - Quality presets plus **Fit to size** — enter a maximum file size (e.g. 95 MB for Signal) and the bitrate is chosen to land under it
 - Live estimate of the output file size while you edit
 - GIF export with palette generation
+- Frame-accurate navigation: `A` / `←` and `D` / `→` step one frame (hold `Shift` for one second); `I` / `O` mark start and end, `S` saves a screenshot
 - Render queue, screenshots, auto-update
 
 ```bash

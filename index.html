@@ -989,7 +989,7 @@
                 <div class="zoom-rof-h" style="top:33.33%"></div>
                 <div class="zoom-rof-h" style="top:66.66%"></div>
               </div>
-              <div class="zoom-hint" id="zoomHint">Drag to select the region to zoom into</div>
+              <div class="zoom-hint" id="zoomHint">Drag to select the region to zoom into<br><small>Hold Shift for a free-form region (rendered with black bars)</small></div>
               <div class="zoom-toolbar" id="zoomToolbar">
                 <button class="zoom-toolbar-btn cancel" id="zoomCancelBtn">Cancel</button>
                 <button class="zoom-toolbar-btn confirm" id="zoomConfirmBtn">&#10003;&thinsp;Apply Zoom</button>
@@ -1005,14 +1005,14 @@
             <div class="segment-markers" id="segmentMarkers"></div>
           </div>
           <div class="playback-controls">
-            <button class="btn-icon" id="btnRewind" title="Back 5s">
+            <button class="btn-icon" id="btnRewind" title="Back 5s  (A or ← = one frame back, Shift = 1s)">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>
             </button>
             <button class="btn-icon" id="btnPlayPause" title="Play / Pause">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" id="playIcon"><polygon points="5 3 19 12 5 21 5 3"/></svg>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" id="pauseIcon" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
             </button>
-            <button class="btn-icon" id="btnForward" title="Forward 5s">
+            <button class="btn-icon" id="btnForward" title="Forward 5s  (D or → = one frame forward, Shift = 1s)">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg>
             </button>
             <div class="time-display">

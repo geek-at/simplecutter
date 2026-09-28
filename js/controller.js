@@ -361,6 +361,12 @@ function setupSegmentControls() {
     if (e.key === 'i' || e.key === 'I') { e.preventDefault(); markFrom(); }
     if (e.key === 'o' || e.key === 'O') { e.preventDefault(); markTo(); }
     if (e.key === 's' || e.key === 'S') { e.preventDefault(); takeScreenshot(); }
+
+    // Frame stepping: A / ArrowLeft = back, D / ArrowRight = forward.
+    // Hold Shift to jump one second instead of one frame.
+    const k = e.key.toLowerCase();
+    if (k === 'a' || k === 'arrowleft')  { e.preventDefault(); stepFrames(e.shiftKey ? -getStepFps() : -1); }
+    if (k === 'd' || k === 'arrowright') { e.preventDefault(); stepFrames(e.shiftKey ?  getStepFps() :  1); }
   });
 
   el.btnScreenshot.addEventListener('click', () => takeScreenshot());
@@ -368,9 +374,48 @@ function setupSegmentControls() {
   el.processBtn.addEventListener('click', processVideo);
 }
 
+// ──────────── Frame Stepping ────────────
+function getStepFps() {
+  const fps = appState.videoFps;
+  return (fps > 0 && isFinite(fps)) ? fps : 30;
+}
+
+/** Index of the frame currently on screen. */
+function currentFrameIndex() {
+  // +0.01 absorbs float error when currentTime sits exactly on a frame boundary
+  return Math.floor(el.videoPlayer.currentTime * getStepFps() + 0.01);
+}
+
+/** Move the playhead by a number of frames (negative = backwards). Pauses playback. */
+function stepFrames(count) {
+  if (!appState.videoPath || !(appState.videoDuration > 0)) return;
+  const v = el.videoPlayer;
+  if (!v.paused) {
+    v.pause();
+    appState.isPlaying = false;
+    el.playIcon.style.display = '';
+    el.pauseIcon.style.display = 'none';
+  }
+  const fps = getStepFps();
+  const maxFrame = Math.max(0, Math.ceil(appState.videoDuration * fps) - 1);
+  const target = Math.min(maxFrame, Math.max(0, currentFrameIndex() + Math.round(count)));
+  // Land a hair inside the frame so the player shows this frame, not the previous one
+  v.currentTime = Math.min(appState.videoDuration, target / fps + 0.0001);
+}
+
+/** Start time of the frame on screen — a cut starting here includes that frame. */
+function frameStartTime() {
+  return Math.max(0, currentFrameIndex() / getStepFps());
+}
+
+/** End time of the frame on screen — a cut ending here includes that frame. */
+function frameEndTime() {
+  return Math.min(appState.videoDuration, (currentFrameIndex() + 1) / getStepFps());
+}
+
 function markFrom() {
   if (!appState.videoPath) return;
-  const cur = el.videoPlayer.currentTime;
+  const cur = frameStartTime();
 
   if (appState.segments.length === 0) {
     // Create a new segment starting here, ending 10s later (or at video end)
@@ -387,7 +432,7 @@ function markFrom() {
 
 function markTo() {
   if (!appState.videoPath) return;
-  const cur = el.videoPlayer.currentTime;
+  const cur = frameEndTime();
 
   if (appState.segments.length === 0) {
     // Create a segment from 0 to here
@@ -808,7 +853,7 @@ function setupZoomOverlay() {
     const rect = overlay.getBoundingClientRect();
     const curX = e.clientX - rect.left;
     const curY = e.clientY - rect.top;
-    applyZoomCropBox(normalizeRect(zoomState.startX, zoomState.startY, curX, curY));
+    applyZoomCropBox(selectionRect(zoomState.startX, zoomState.startY, curX, curY, rect.width, rect.height, !e.shiftKey));
   });
 
   overlay.addEventListener('mouseup', (e) => {
@@ -817,7 +862,7 @@ function setupZoomOverlay() {
     const rect = overlay.getBoundingClientRect();
     const curX = e.clientX - rect.left;
     const curY = e.clientY - rect.top;
-    const box = normalizeRect(zoomState.startX, zoomState.startY, curX, curY);
+    const box = selectionRect(zoomState.startX, zoomState.startY, curX, curY, rect.width, rect.height, !e.shiftKey);
 
     if (box.width < 8 || box.height < 8) {
       el.zoomCropBox.style.display = 'none';
@@ -858,6 +903,40 @@ function setupZoomOverlay() {
   });
 }
 
+/**
+ * Selection rectangle from a drag. With lockAspect the box keeps the overlay's
+ * (= the video's) aspect ratio, so the zoomed region fills the output frame
+ * without stretching. Anchored at the drag start, clamped to the overlay.
+ */
+function selectionRect(x1, y1, x2, y2, ow, oh, lockAspect) {
+  x2 = Math.max(0, Math.min(x2, ow));
+  y2 = Math.max(0, Math.min(y2, oh));
+  if (!lockAspect || !(ow > 0) || !(oh > 0)) return normalizeRect(x1, y1, x2, y2);
+
+  const dirX = x2 >= x1 ? 1 : -1;
+  const dirY = y2 >= y1 ? 1 : -1;
+  const aspect = ow / oh;
+  // Follow whichever axis the user dragged further (in aspect-corrected terms)
+  let w = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1) * aspect);
+  // Shrink to stay inside the overlay in the drag direction
+  const maxW = dirX > 0 ? ow - x1 : x1;
+  const maxH = dirY > 0 ? oh - y1 : y1;
+  w = Math.min(w, maxW, maxH * aspect);
+  const h = w / aspect;
+  return normalizeRect(x1, y1, x1 + dirX * w, y1 + dirY * h);
+}
+
+/** Area of the <video> element actually covered by picture (excludes letterbox bars). */
+function getVideoContentRect() {
+  const v = el.videoPlayer;
+  const r = v.getBoundingClientRect();
+  const vw = v.videoWidth, vh = v.videoHeight;
+  if (!(vw > 0) || !(vh > 0) || !(r.width > 0) || !(r.height > 0)) return r;
+  const scale = Math.min(r.width / vw, r.height / vh);
+  const width = vw * scale, height = vh * scale;
+  return { left: r.left + (r.width - width) / 2, top: r.top + (r.height - height) / 2, width, height };
+}
+
 function normalizeRect(x1, y1, x2, y2) {
   return {
     left:   Math.min(x1, x2),
@@ -881,7 +960,7 @@ function openZoomOverlay(segId) {
 
   // Size the overlay to cover exactly the rendered video area
   const dropzoneRect = el.videoDropzone.getBoundingClientRect();
-  const videoRect    = el.videoPlayer.getBoundingClientRect();
+  const videoRect    = getVideoContentRect();
   el.zoomOverlay.style.left   = `${videoRect.left - dropzoneRect.left}px`;
   el.zoomOverlay.style.top    = `${videoRect.top  - dropzoneRect.top}px`;
   el.zoomOverlay.style.width  = `${videoRect.width}px`;
