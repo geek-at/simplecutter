@@ -25,6 +25,49 @@ const zoomState = {
 const renderQueue = [];
 let queueRunning = false;
 
+// ──────────── Persisted Output Options ────────────
+// Remembered across restarts (localStorage lives in the app's userData folder).
+const SETTINGS_KEY = 'simplecutter.outputOptions.v1';
+const DEFAULT_OUTPUT_PREFS = {
+  createGif: false,
+  gifWidth: 480,
+  gifFps: 15,
+  quality: 'high',
+  targetSizeMB: 95,
+  halfResolution: false,
+  limitFps30: false,
+  hwEncode: true
+};
+// What the user asked for. Kept separately from the DOM because the app itself
+// flips some toggles (30 fps cap on <=30 fps sources, hardware encoding without a GPU).
+let outputPrefs = { ...DEFAULT_OUTPUT_PREFS };
+
+function loadOutputPrefs() {
+  const prefs = { ...DEFAULT_OUTPUT_PREFS };
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {};
+    const num = (v, lo, hi, dflt) => (typeof v === 'number' && isFinite(v)) ? Math.min(hi, Math.max(lo, v)) : dflt;
+    for (const k of ['createGif', 'halfResolution', 'limitFps30', 'hwEncode']) {
+      if (typeof saved[k] === 'boolean') prefs[k] = saved[k];
+    }
+    if (typeof saved.quality === 'string' && SCQuality.PRESETS[saved.quality]) prefs.quality = saved.quality;
+    prefs.gifWidth     = Math.round(num(saved.gifWidth, 100, 1920, prefs.gifWidth));
+    prefs.gifFps       = Math.round(num(saved.gifFps, 1, 60, prefs.gifFps));
+    prefs.targetSizeMB = num(saved.targetSizeMB, 1, 10000, prefs.targetSizeMB);
+  } catch (e) {
+    console.warn('Could not read saved output options:', e);
+  }
+  return prefs;
+}
+
+function saveOutputPrefs() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(outputPrefs));
+  } catch (e) {
+    console.warn('Could not save output options:', e);
+  }
+}
+
 // ──────────── DOM refs (built after DOMContentLoaded) ────────────
 let el = {};
 
@@ -80,6 +123,7 @@ function cacheDom() {
 // ──────────── Init ────────────
 async function init() {
   cacheDom();
+  outputPrefs = loadOutputPrefs();
 
   // GPU info: detection runs in the main process after the window is shown.
   // Subscribe first so we can't miss the result, then read the current state.
@@ -143,7 +187,7 @@ function updateGPUStatus() {
     const encoder = gpu.hwEncoder ? ` (${gpu.hwEncoder})` : '';
     el.gpuStatusText.textContent = `${vendor}${encoder}`;
     el.gpuStatusText.title = gpu.gpuModel || '';
-    el.hwEncodeToggle.checked = true;
+    el.hwEncodeToggle.checked = outputPrefs.hwEncode !== false;
     el.hwEncodeToggle.disabled = false;
     el.hwEncodeHint.style.display = 'none';
   } else {
@@ -252,11 +296,13 @@ function loadVideo(filePath) {
         el.fps30Toggle.parentElement.title = `Video is already ${Math.round(fps)} fps`;
       } else {
         el.fps30Toggle.disabled = false;
+        el.fps30Toggle.checked = outputPrefs.limitFps30;
         el.fps30Toggle.parentElement.title = '';
       }
     } catch (_) {
       appState.videoInfo = null;
       el.fps30Toggle.disabled = false;
+      el.fps30Toggle.checked = outputPrefs.limitFps30;
     }
 
     // Auto-add first segment covering the full video duration
@@ -545,6 +591,10 @@ function renderSegments() {
           <option value="1"    ${seg.speed === 1    ? 'selected' : ''}>1x (Normal)</option>
           <option value="1.5"  ${seg.speed === 1.5  ? 'selected' : ''}>1.5x</option>
           <option value="2"    ${seg.speed === 2    ? 'selected' : ''}>2x</option>
+          <option value="3"    ${seg.speed === 3    ? 'selected' : ''}>3x</option>
+          <option value="4"    ${seg.speed === 4    ? 'selected' : ''}>4x</option>
+          <option value="8"    ${seg.speed === 8    ? 'selected' : ''}>8x</option>
+          <option value="16"   ${seg.speed === 16   ? 'selected' : ''}>16x (Timelapse)</option>
         </select>
         <label style="font-size:11px; color:var(--text-secondary); margin-left:auto; display:flex; align-items:center; gap:4px; cursor:pointer;">
           <input type="checkbox" ${seg.muted ? 'checked' : ''}
@@ -584,6 +634,37 @@ function updateTimelineMarkers() {
 
 // ──────────── Output Options ────────────
 function setupOutputOptions() {
+  // Restore what the user had last time
+  el.createGifToggle.checked = outputPrefs.createGif;
+  el.gifOptions.style.display = outputPrefs.createGif ? 'block' : 'none';
+  el.gifWidth.value = outputPrefs.gifWidth;
+  el.gifFps.value = outputPrefs.gifFps;
+  el.qualitySelect.value = outputPrefs.quality;
+  el.targetSizeRow.style.display = outputPrefs.quality === 'size' ? 'flex' : 'none';
+  el.targetSizeMB.value = outputPrefs.targetSizeMB;
+  el.halfResToggle.checked = outputPrefs.halfResolution;
+  el.fps30Toggle.checked = outputPrefs.limitFps30;
+
+  // Remember every change the user makes. These events only fire on user
+  // interaction, not when the app sets a toggle itself.
+  const remember = (input, key, read) => {
+    const handler = () => {
+      const value = read();
+      if (value === null || value === undefined || (typeof value === 'number' && !isFinite(value))) return;
+      outputPrefs[key] = value;
+      saveOutputPrefs();
+    };
+    input.addEventListener('change', handler);
+  };
+  remember(el.createGifToggle, 'createGif',      () => el.createGifToggle.checked);
+  remember(el.gifWidth,        'gifWidth',       () => parseInt(el.gifWidth.value));
+  remember(el.gifFps,          'gifFps',         () => parseInt(el.gifFps.value));
+  remember(el.qualitySelect,   'quality',        () => el.qualitySelect.value);
+  remember(el.targetSizeMB,    'targetSizeMB',   () => parseFloat(el.targetSizeMB.value));
+  remember(el.halfResToggle,   'halfResolution', () => el.halfResToggle.checked);
+  remember(el.fps30Toggle,     'limitFps30',     () => el.fps30Toggle.checked);
+  remember(el.hwEncodeToggle,  'hwEncode',       () => el.hwEncodeToggle.checked);
+
   el.createGifToggle.addEventListener('change', (e) => {
     el.gifOptions.style.display = e.target.checked ? 'block' : 'none';
     updateEstimate();
