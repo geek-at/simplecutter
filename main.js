@@ -449,17 +449,30 @@ ipcMain.handle('select-video', async () => {
   return result.filePaths[0];
 });
 
+/**
+ * Output folder for everything the app produces from a source video (clips,
+ * GIFs, screenshots): a "cut" subfolder next to the source, unless the source
+ * already lives in one (re-cutting a clip must not nest cut/cut/...).
+ * Falls back to the source folder itself if the subfolder can't be created.
+ */
+function ensureCutDir(sourceDir) {
+  if (!sourceDir) return sourceDir;
+  if (path.basename(sourceDir).toLowerCase() === 'cut') return sourceDir;
+  const cutDir = path.join(sourceDir, 'cut');
+  try {
+    fs.mkdirSync(cutDir, { recursive: true });
+    return cutDir;
+  } catch (_) {
+    return sourceDir;
+  }
+}
+
 ipcMain.handle('select-output-dir', async (event, opts = {}) => {
   const isGif = opts.isGif || false;
   const sourceDir = opts.sourceDir || '';
   const ext = isGif ? 'gif' : 'mp4';
 
-  // Create a "cut" subfolder next to the source video, unless we're already inside one
-  let cutDir = sourceDir;
-  if (sourceDir && path.basename(sourceDir).toLowerCase() !== 'cut') {
-    cutDir = path.join(sourceDir, 'cut');
-    try { fs.mkdirSync(cutDir, { recursive: true }); } catch (_) {}
-  }
+  const cutDir = ensureCutDir(sourceDir);
 
   // Generate a random three-word filename
   const randomName = generateRandomFilename();
@@ -516,7 +529,8 @@ ipcMain.handle('save-screenshot', async (event, opts) => {
     .substring(0, 20);
   const ts = timestamp.toFixed(2).replace('.', 's') + 'ms';
   const outName = `${videoName}_${ts}.png`;
-  const outPath = path.join(path.dirname(videoPath), outName);
+  // Screenshots go to the same "cut" folder as rendered clips
+  const outPath = path.join(ensureCutDir(path.dirname(videoPath)), outName);
 
   // Build optional zoom filter (PNG has no even-dimension requirement so expressions work fine)
   const vfArgs = [];
