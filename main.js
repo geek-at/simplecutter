@@ -10,6 +10,42 @@ let mainWindow = null;
 let updateDownloaded = false;
 let isForceQuitting = false;
 
+// ── Launch-with-file support (Explorer "Edit with DTA Cutter" / drag onto exe) ──
+const VIDEO_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm', '.avi', '.m4v', '.ts', '.flv', '.wmv', '.mpg', '.mpeg']);
+let pendingLaunchFile = null;
+
+// Pick the video file out of a process argv array (ignores flags, "." in dev, etc.)
+function extractVideoArg(argv) {
+  for (const arg of argv.slice(1).reverse()) {
+    if (!arg || arg.startsWith('-')) continue;
+    if (!VIDEO_EXTS.has(path.extname(arg).toLowerCase())) continue;
+    const abs = path.resolve(arg);
+    if (fs.existsSync(abs)) return abs;
+  }
+  return null;
+}
+
+function openFileInWindow(filePath) {
+  if (!filePath) return;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+    mainWindow.webContents.send('open-file', filePath);
+  } else {
+    pendingLaunchFile = filePath;
+  }
+}
+
+// One running instance: a second launch (e.g. another right-click) hands its file over
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  pendingLaunchFile = extractVideoArg(process.argv);
+  app.on('second-instance', (_event, argv) => {
+    openFileInWindow(extractVideoArg(argv));
+  });
+}
+
 // ── Random filename generator ──
 const WORDS = [
   // adjectives
@@ -402,6 +438,13 @@ function createWindow() {
     mainWindow.setMenu(null);
   }
 }
+
+// Renderer asks for the file it was launched with (once, after init)
+ipcMain.handle('get-launch-file', () => {
+  const f = pendingLaunchFile;
+  pendingLaunchFile = null;
+  return f;
+});
 
 // Window control IPC handlers (frameless window)
 ipcMain.on('win-minimize', () => { mainWindow?.minimize(); });

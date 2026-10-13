@@ -153,6 +153,13 @@ async function init() {
   setupOutputOptions();
   setupZoomOverlay();
 
+  // Opened via Explorer context menu / command line (now or while already running)
+  window.electronAPI.onOpenFile((filePath) => { if (filePath) loadVideo(filePath); });
+  try {
+    const launchFile = await window.electronAPI.getLaunchFile();
+    if (launchFile) loadVideo(launchFile);
+  } catch (_) { /* ignore */ }
+
   // Live progress updates for the active render job
   window.electronAPI.onFFmpegProgress((data) => {
     const job = renderQueue.find(j => j.status === 'rendering');

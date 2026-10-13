@@ -12,6 +12,10 @@ window.electronAPI = {
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   getVideoInfo: (filePath) => ipcRenderer.invoke('get-video-info', filePath),
   selectVideo: () => ipcRenderer.invoke('select-video'),
+  getLaunchFile: () => ipcRenderer.invoke('get-launch-file'),
+  onOpenFile: (callback) => {
+    ipcRenderer.on('open-file', (_event, filePath) => callback(filePath));
+  },
   selectOutputDir: (opts) => ipcRenderer.invoke('select-output-dir', opts),
   saveScreenshot: (opts) => ipcRenderer.invoke('save-screenshot', opts),
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),

@@ -72,7 +72,8 @@
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "perMachine": false
+      "perMachine": false,
+      "include": "build/installer.nsh"
     },
     "mac": {
       "category": "public.app-category.video",
