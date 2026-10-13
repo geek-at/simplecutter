@@ -86,6 +86,7 @@ function cacheDom() {
     btnMarkFrom:      document.getElementById('btnMarkFrom'),
     btnMarkTo:        document.getElementById('btnMarkTo'),
     btnScreenshot:    document.getElementById('btnScreenshot'),
+    btnPreview:       document.getElementById('btnPreview'),
     processBtn:       document.getElementById('processBtn'),
     btnPlayPause:     document.getElementById('btnPlayPause'),
     btnRewind:        document.getElementById('btnRewind'),
@@ -268,6 +269,7 @@ function setupDragAndDrop() {
 
 // ──────────── Load Video ────────────
 function loadVideo(filePath) {
+  stopPreview();
   appState.videoPath = filePath;
 
   // Clear old segments when loading a new file
@@ -282,6 +284,7 @@ function loadVideo(filePath) {
   el.btnMarkFrom.disabled = false;
   el.btnMarkTo.disabled = false;
   el.btnScreenshot.disabled = false;
+  el.btnPreview.disabled = false;
 
   // Use file:// protocol — works because webSecurity:true but nodeIntegration is on
   el.videoPlayer.src = `file://${filePath}`;
@@ -328,9 +331,8 @@ function loadVideo(filePath) {
   };
 
   el.videoPlayer.onended = () => {
-    appState.isPlaying = false;
-    el.playIcon.style.display = '';
-    el.pauseIcon.style.display = 'none';
+    stopPreview();
+    setPlayingUI(false);
   };
 
   updateProcessButton();
@@ -343,32 +345,104 @@ function setupVideoControls() {
     if (!appState.videoPath) return;
     if (el.videoPlayer.paused) {
       el.videoPlayer.play();
-      appState.isPlaying = true;
-      el.playIcon.style.display = 'none';
-      el.pauseIcon.style.display = '';
+      setPlayingUI(true);
     } else {
+      stopPreview();
       el.videoPlayer.pause();
-      appState.isPlaying = false;
-      el.playIcon.style.display = '';
-      el.pauseIcon.style.display = 'none';
+      setPlayingUI(false);
     }
   });
 
   el.btnRewind.addEventListener('click', (e) => {
     e.stopPropagation();
+    stopPreview();
     el.videoPlayer.currentTime = Math.max(0, el.videoPlayer.currentTime - 5);
   });
 
   el.btnForward.addEventListener('click', (e) => {
     e.stopPropagation();
+    stopPreview();
     el.videoPlayer.currentTime = Math.min(appState.videoDuration, el.videoPlayer.currentTime + 5);
   });
 
   el.videoTimeline.addEventListener('click', (e) => {
     const rect = el.videoTimeline.getBoundingClientRect();
     const pos = (e.clientX - rect.left) / rect.width;
+    stopPreview();
     el.videoPlayer.currentTime = pos * appState.videoDuration;
   });
+
+  el.btnPreview.addEventListener('click', (e) => {
+    e.stopPropagation();
+    togglePreview();
+  });
+}
+
+function setPlayingUI(playing) {
+  appState.isPlaying = playing;
+  el.playIcon.style.display  = playing ? 'none' : '';
+  el.pauseIcon.style.display = playing ? '' : 'none';
+}
+
+// ──────────── Cut Preview ────────────
+// Plays the segments back-to-back in list order (= concat order in the render),
+// applying each segment's speed and mute. Zoom is not previewed.
+let preview = null; // { index, rafId } while active
+
+function togglePreview() {
+  if (preview) stopPreview(); else startPreview();
+}
+
+function startPreview() {
+  if (!appState.videoPath || appState.segments.length === 0) return;
+  stopPreview();
+  preview = { index: -1, rafId: 0 };
+  el.btnPreview.classList.add('active');
+  if (!previewAdvance()) return;
+  el.videoPlayer.play();
+  setPlayingUI(true);
+  const tick = () => {
+    if (!preview) return;
+    const v = el.videoPlayer;
+    const seg = appState.segments[preview.index];
+    // Segment edited/removed underneath us, or reached its end -> move on
+    if (!seg || v.currentTime >= seg.endTime) {
+      if (!previewAdvance()) return;
+    }
+    preview.rafId = requestAnimationFrame(tick);
+  };
+  preview.rafId = requestAnimationFrame(tick);
+}
+
+/** Jump to the next playable segment. Returns false (and ends the preview) when none is left. */
+function previewAdvance() {
+  const v = el.videoPlayer;
+  for (let i = preview.index + 1; i < appState.segments.length; i++) {
+    const seg = appState.segments[i];
+    if (!(seg.endTime > seg.startTime)) continue;
+    preview.index = i;
+    v.currentTime = seg.startTime;
+    // Chromium clamps playbackRate to 0.0625-16 and silences audio outside roughly 0.5-4x
+    v.playbackRate = Math.min(16, Math.max(0.0625, seg.speed || 1));
+    v.muted = !!seg.muted;
+    updateTimelineMarkers();
+    return true;
+  }
+  stopPreview();
+  v.pause();
+  setPlayingUI(false);
+  return false;
+}
+
+function stopPreview() {
+  if (!preview) return;
+  cancelAnimationFrame(preview.rafId);
+  preview = null;
+  const v = el.videoPlayer;
+  v.playbackRate = 1;
+  v.muted = false;
+  el.btnPreview.classList.remove('active');
+  updateTimelineMarkers();
 }
 
 function updateTimelineSecondIndicator(currentTime, duration) {
@@ -414,6 +488,7 @@ function setupSegmentControls() {
     if (e.key === 'i' || e.key === 'I') { e.preventDefault(); markFrom(); }
     if (e.key === 'o' || e.key === 'O') { e.preventDefault(); markTo(); }
     if (e.key === 's' || e.key === 'S') { e.preventDefault(); takeScreenshot(); }
+    if (e.key === 'p' || e.key === 'P') { e.preventDefault(); togglePreview(); }
 
     // Frame stepping: A / ArrowLeft = back, D / ArrowRight = forward.
     // Hold Shift to jump one second instead of one frame.
@@ -443,11 +518,10 @@ function currentFrameIndex() {
 function stepFrames(count) {
   if (!appState.videoPath || !(appState.videoDuration > 0)) return;
   const v = el.videoPlayer;
+  stopPreview();
   if (!v.paused) {
     v.pause();
-    appState.isPlaying = false;
-    el.playIcon.style.display = '';
-    el.pauseIcon.style.display = 'none';
+    setPlayingUI(false);
   }
   const fps = getStepFps();
   const maxFrame = Math.max(0, Math.ceil(appState.videoDuration * fps) - 1);
@@ -592,6 +666,7 @@ function renderSegments() {
       <div class="segment-options">
         <label style="font-size:11px; color:var(--text-secondary);">Speed:</label>
         <select class="speed-select" onchange="updateSegment(${seg.id}, 'speed', parseFloat(this.value))">
+          <option value="0.125" ${seg.speed === 0.125 ? 'selected' : ''}>0.125x (Eighth)</option>
           <option value="0.25" ${seg.speed === 0.25 ? 'selected' : ''}>0.25x (Quarter)</option>
           <option value="0.5"  ${seg.speed === 0.5  ? 'selected' : ''}>0.5x (Half)</option>
           <option value="0.75" ${seg.speed === 0.75 ? 'selected' : ''}>0.75x</option>
@@ -632,10 +707,11 @@ function renderSegments() {
 
 function updateTimelineMarkers() {
   if (appState.videoDuration <= 0) return;
-  el.segmentMarkers.innerHTML = appState.segments.map(seg => {
+  el.segmentMarkers.innerHTML = appState.segments.map((seg, i) => {
     const left  = (seg.startTime / appState.videoDuration) * 100;
     const width = ((seg.endTime - seg.startTime) / appState.videoDuration) * 100;
-    return `<div class="segment-marker" style="left:${left}%;width:${width}%"></div>`;
+    const active = preview && preview.index === i ? ' active' : '';
+    return `<div class="segment-marker${active}" style="left:${left}%;width:${width}%"></div>`;
   }).join('');
 }
 

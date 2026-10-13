@@ -271,6 +271,7 @@
       border-left: 2px solid var(--primary);
       border-right: 2px solid var(--primary);
     }
+    .segment-marker.active { background: rgba(99, 102, 241, 0.45); }
 
     .playback-controls {
       display: flex;
@@ -319,6 +320,8 @@
     .mark-btn:disabled { opacity: 0.4; cursor: default; }
     .mark-btn:disabled:hover { background: var(--bg-dark); border-color: var(--border); }
     .mark-btn .mark-key { font-size: 10px; opacity: 0.5; margin-left: 4px; }
+    .mark-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .mark-btn.active:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
     .mark-controls {
       display: flex;
       align-items: center;
@@ -1019,6 +1022,12 @@
               <span id="currentTime">0:00</span> / <span id="duration">0:00</span>
             </div>
             <div class="mark-controls">
+              <button class="mark-btn" id="btnPreview" disabled title="Play the segments back-to-back with their speed and mute settings (P)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+                Preview <span class="mark-key">[P]</span>
+              </button>
               <button class="mark-btn" id="btnScreenshot" disabled title="Save screenshot of current frame (S)">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px">
                   <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3.5"/><path d="M3 9h2M19 9h2"/>
