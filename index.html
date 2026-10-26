@@ -361,8 +361,19 @@
     .sidebar {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* Cards scroll; the Process button below stays pinned and always visible */
+    .sidebar-scroll {
+      flex: 1;
+      min-height: 0;
       overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-right: 2px;
     }
 
     .card {
@@ -632,7 +643,7 @@
     .gif-option input:focus { outline: none; border-color: var(--primary); }
 
     /* ======== Process Button ======== */
-    .process-section { margin-top: auto; padding-top: 12px; }
+    .process-section { flex-shrink: 0; padding-top: 12px; }
 
     .process-btn { width: 100%; padding: 12px; font-size: 14px; font-weight: 600; }
 
@@ -1049,6 +1060,7 @@
 
       <!-- Right: Sidebar -->
       <aside class="sidebar">
+       <div class="sidebar-scroll">
 
         <!-- Segments -->
         <div class="card">
@@ -1146,6 +1158,8 @@
             </div>
           </div>
         </div>
+
+       </div><!-- /sidebar-scroll -->
 
         <!-- Process -->
         <div class="process-section">
